@@ -1,0 +1,42 @@
+{
+  "name": "kennel-hq",
+  "version": "1.0.0",
+  "description": "An AI dev team of pixel-art dogs, powered by Claude Code: plan, code, test and ship with a live office, a shared brain and a token-saving workflow.",
+  "author": "Gene Elpie Landoy",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PrimeSalad/kennel-hq.git"
+  },
+  "homepage": "https://github.com/PrimeSalad/kennel-hq#readme",
+  "keywords": [
+    "claude",
+    "claude-code",
+    "ai-agents",
+    "multi-agent",
+    "pixel-art",
+    "developer-tools",
+    "cli"
+  ],
+  "bin": {
+    "kennel": "bin/kennel.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "public",
+    "skills"
+  ],
+  "scripts": {
+    "start": "node bin/kennel.mjs",
+    "dev": "node --watch bin/kennel.mjs --no-open"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "qrcode-terminal": "^0.12.0"
+  }
+}
