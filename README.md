@@ -20,8 +20,7 @@ A pixel-art office where a pack of dogs writes your code. Each dog is a headless
 
 ## Requirements
 
-- Node.js 22 or newer
-- [Claude Code](https://claude.com/claude-code), installed and logged in (run `claude` once). Kennel finds it on your PATH or in `~/.local/bin`.
+A Claude account (Pro, Max, Team or Enterprise). The installer below sets up Node.js and [Claude Code](https://claude.com/claude-code) for you if they're missing.
 
 ## Install
 
@@ -37,7 +36,12 @@ irm https://raw.githubusercontent.com/PrimeSalad/kennel-hq/main/install.ps1 | ie
 curl -fsSL https://raw.githubusercontent.com/PrimeSalad/kennel-hq/main/install.sh | bash
 ```
 
-The installer checks for Node.js 22+, installs the `kennel` command, and tells you if Claude Code is still missing.
+That's all you need, even on a brand-new laptop. Like Claude Code's own installer, it sets everything up:
+- **Node.js**: uses yours if it's 22 or newer, otherwise downloads a private copy into `~/.kennel/node` (no admin or sudo needed)
+- **Claude Code**: installs it with the official installer if it's missing (then run `claude` once to log in)
+- **kennel**: installs the command and puts it on your PATH
+
+Open a new terminal afterwards. Run the same command again any time to update.
 
 Or with npm directly:
 
@@ -46,7 +50,7 @@ npm install -g kennel-hq                                   # from npm
 npm install -g https://codeload.github.com/PrimeSalad/kennel-hq/tar.gz/main   # straight from GitHub
 ```
 
-Then, optionally: `kennel install-skill` adds the `/kennel` skill to Claude Code. Update later by running the same command again.
+Then, optionally: `kennel install-skill` adds the `/kennel` skill to Claude Code.
 
 <details><summary>From source (for contributing)</summary>
 
