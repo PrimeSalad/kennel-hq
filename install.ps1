@@ -1,6 +1,6 @@
 # Kennel HQ installer for Windows (PowerShell).
 #   irm https://raw.githubusercontent.com/PrimeSalad/kennel-hq/main/install.ps1 | iex
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'  # native npm calls write to stderr; exit codes are checked instead
 
 $Repo = 'PrimeSalad/kennel-hq'
 $Pkg = 'kennel-hq'
