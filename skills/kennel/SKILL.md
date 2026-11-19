@@ -19,7 +19,7 @@ If it says Kennel isn't running, start it in the background (Bash with `run_in_b
 kennel serve
 ```
 
-`kennel status` prints the office URL (http://localhost:4321 or nearby). Give it to the user so they can watch the dogs work. If `kennel` itself isn't found, tell the user to run `npm link` in the Kennel HQ folder.
+`kennel status` prints the office URL (http://localhost:4321 or nearby). Give it to the user so they can watch the dogs work. If `kennel` itself isn't found, tell the user to install it with `npm i -g kennel-hq`.
 
 ## 2. Send the work
 

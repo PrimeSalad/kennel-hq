@@ -20,35 +20,29 @@ A pixel-art office where a pack of dogs writes your code. Each dog is a headless
 
 ## Requirements
 
-A Claude account (Pro, Max, Team or Enterprise). The installer below sets up Node.js and [Claude Code](https://claude.com/claude-code) for you if they're missing.
+- A Claude account (Pro, Max, Team or Enterprise)
+- [Node.js](https://nodejs.org) 22+ and [Claude Code](https://claude.com/claude-code). The one-line installer below sets both up for you if they're missing.
 
 ## Install
 
-One line in your terminal:
-
-**Windows (PowerShell)**
-```powershell
-irm https://raw.githubusercontent.com/PrimeSalad/kennel-hq/main/install.ps1 | iex
+```bash
+npm i -g kennel-hq
 ```
 
-**macOS / Linux / WSL**
+Then go to any project and type `kennel`. That's it. (Needs [Node.js](https://nodejs.org) 22+ and [Claude Code](https://claude.com/claude-code); run `claude` once to log in.)
+
+**Brand-new laptop with nothing installed?** This one line sets up Node.js and Claude Code for you too (no admin or sudo):
+
+```powershell
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/PrimeSalad/kennel-hq/main/install.ps1 | iex
+```
 ```bash
+# macOS / Linux / WSL
 curl -fsSL https://raw.githubusercontent.com/PrimeSalad/kennel-hq/main/install.sh | bash
 ```
 
-That's all you need, even on a brand-new laptop. Like Claude Code's own installer, it sets everything up:
-- **Node.js**: uses yours if it's 22 or newer, otherwise downloads a private copy into `~/.kennel/node` (no admin or sudo needed)
-- **Claude Code**: installs it with the official installer if it's missing (then run `claude` once to log in)
-- **kennel**: installs the command and puts it on your PATH
-
-Open a new terminal afterwards. Run the same command again any time to update.
-
-Or with npm directly:
-
-```bash
-npm install -g kennel-hq                                   # from npm
-npm install -g https://codeload.github.com/PrimeSalad/kennel-hq/tar.gz/main   # straight from GitHub
-```
+To update, run the same command again.
 
 Then, optionally: `kennel install-skill` adds the `/kennel` skill to Claude Code.
 
