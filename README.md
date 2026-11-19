@@ -5,7 +5,7 @@
 
 A pixel-art office where a pack of dogs writes your code. Each dog is a headless Claude Code worker running on **your own Claude login** (no API key). You give them work from the terminal, from the office in your browser, or from Claude Code itself. Big requests get planned into tickets, finished work goes through QA, mistakes become lessons, and everything is saved in a shared brain inside your project.
 
-![The office: file panel, cubicles, your boss office, the lair, and live code changes](docs/office.png)
+![The office: file panel, cubicles, your boss office, the lair, and live code changes](https://raw.githubusercontent.com/PrimeSalad/kennel-hq/main/docs/office.png)
 
 | Dog | Breed | Role | Gets work like |
 |---|---|---|---|
@@ -25,13 +25,38 @@ A pixel-art office where a pack of dogs writes your code. Each dog is a headless
 
 ## Install
 
+One line in your terminal:
+
+**Windows (PowerShell)**
+```powershell
+irm https://raw.githubusercontent.com/PrimeSalad/kennel-hq/main/install.ps1 | iex
+```
+
+**macOS / Linux / WSL**
+```bash
+curl -fsSL https://raw.githubusercontent.com/PrimeSalad/kennel-hq/main/install.sh | bash
+```
+
+The installer checks for Node.js 22+, installs the `kennel` command, and tells you if Claude Code is still missing.
+
+Or with npm directly:
+
+```bash
+npm install -g kennel-hq                                   # from npm
+npm install -g https://codeload.github.com/PrimeSalad/kennel-hq/tar.gz/main   # straight from GitHub
+```
+
+Then, optionally: `kennel install-skill` adds the `/kennel` skill to Claude Code. Update later by running the same command again.
+
+<details><summary>From source (for contributing)</summary>
+
 ```bash
 git clone https://github.com/PrimeSalad/kennel-hq.git
 cd kennel-hq
-npm install              # one small dependency (QR codes for remote mode)
+npm install
 npm link                 # adds the `kennel` command everywhere
-kennel install-skill     # optional: adds the /kennel skill to Claude Code
 ```
+</details>
 
 The first time `kennel` runs it downloads each dog's skills from GitHub (about 20 seconds).
 
@@ -44,7 +69,7 @@ cd C:\path\to\your-project
 kennel
 ```
 
-![The terminal](docs/terminal.png)
+![The terminal](https://raw.githubusercontent.com/PrimeSalad/kennel-hq/main/docs/terminal.png)
 
 The terminal works like Claude Code: the pack in pixel art, a live line for each working dog (what it's reading, editing or running), every tool call as it happens, and an input box at the bottom.
 
