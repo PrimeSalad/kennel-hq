@@ -1,6 +1,6 @@
 ---
 name: kennel
-description: Delegate coding work to Kennel HQ, the user's pack of Claude Code worker dogs (Chou plans and leads, Harley writes app code, Asky does UI/UX design, Biscuit writes documentation, Bacon does databases, Pitchie does tests/QA, Tiger does CI/deploy, Lucifur explains and teaches) that work in the current project with automatic QA, lessons and a shared brain. Use when the user says to send or give work to the pack, the kennel, the dogs or a dog by name ("ipasa kay Harley", "ipagawa sa pack"), asks what the dogs did or found, or wants to teach them a rule.
+description: Delegate coding and video work to Kennel HQ, the user's pack of Claude Code worker dogs (Chou plans and leads, Harley writes app code, Asky does UI/UX design, Biscuit writes documentation, Bacon does databases, Pitchie does tests/QA, Tiger does CI/deploy, Lucifur explains and teaches) plus a video studio of cats (Seah edits, Yuki does motion graphics, Shadow colors, Snow does sound and captions, Goose makes shorts and thumbnails) that work in the current project with automatic QA, lessons and a shared brain. Use when the user says to send or give work to the pack, the kennel, the dogs or a dog by name ("ipasa kay Harley", "ipagawa sa pack"), asks what the dogs did or found, or wants to teach them a rule.
 ---
 
 # Kennel HQ
@@ -29,7 +29,8 @@ kennel ask "<task>" --wait
 
 Run it with `run_in_background: true`. Jobs take minutes, and you'll be notified when the report is ready.
 
-- If the user names a dog, add `--dog <chou|harley|asky|bacon|pitchie|tiger|biscuit|lucifur>`. Otherwise let Kennel route it. Asky handles UI/UX and styling. Biscuit handles documentation. Lucifur only explains (read-only), so use him when the user wants to understand something.
+- If the user names a dog or cat, add `--dog <name>`: dogs `chou|harley|asky|bacon|pitchie|tiger|biscuit|lucifur`, cats `seah|yuki|shadow|snow|goose`. Otherwise let Kennel route it. Asky handles UI/UX and styling. Biscuit handles documentation. Lucifur only explains (read-only), so use him when the user wants to understand something.
+- Video work goes to the cats in the video studio upstairs: Seah (lead editor: cuts, pacing, ffmpeg, exports), Yuki (motion graphics in Remotion: titles, intros, animations), Shadow (color grading, VFX, green screen), Snow (audio mix, loudness, captions/subtitles), Goose (shorts/reels, thumbnails, platform delivery). For a whole video project, use `--plan` and Seah splits it among the cats. Video work needs ffmpeg (and Node for Remotion) on the machine.
 - For a request with several parts, add `--plan`. Chou splits it into ordered tickets. Long or multi-part requests get planned automatically.
 - Send one `kennel ask` per separate request. Don't resend something that's already queued (check `kennel status`).
 

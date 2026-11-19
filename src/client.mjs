@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const NAMES = { chou: 'Chou', harley: 'Harley', bacon: 'Bacon', pitchie: 'Pitchie', tiger: 'Tiger', asky: 'Asky', biscuit: 'Biscuit', lucifur: 'Lucifur', claude: 'Claude', team: 'Team' };
+const NAMES = { chou: 'Chou', harley: 'Harley', bacon: 'Bacon', pitchie: 'Pitchie', tiger: 'Tiger', asky: 'Asky', biscuit: 'Biscuit', lucifur: 'Lucifur', seah: 'Seah', yuki: 'Yuki', shadow: 'Shadow', snow: 'Snow', goose: 'Goose', claude: 'Claude', team: 'Team' };
 const STATUS = {
   verified: '✓ passed QA', 'self-checked': '✓ small + self-tested', 'pending-qa': '… waiting for QA', checking: '… in QA',
   fixing: '✗ being fixed', failed: '✗ failed', 'needs-you': '! NEEDS YOU', 'qa-skipped': '- QA skipped (limit)',

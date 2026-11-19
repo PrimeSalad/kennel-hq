@@ -1,11 +1,11 @@
-| Lucifur | caveman-explore, investigate-first · systematic-debugging, brainstorming, receiving-code-review | caveman · superpowers || Biscuit | humanizer · doc-coauthoring, internal-comms · writing-skills | [blader/humanizer](https://github.com/blader/humanizer) · anthropics/skills · superpowers || Tiger | terrashark · finishing-a-development-branch, using-git-worktrees, verification-before-completion · caveman-commit, lean-build, verify-and-stop | [LukasNiessen/terrashark](https://github.com/LukasNiessen/terrashark) · superpowers · caveman || Pitchie | webapp-testing · test-driven-development, verification-before-completion, systematic-debugging · caveman-review, verify-and-stop | anthropics/skills · superpowers · caveman || Bacon | postgres, design-postgres-tables, postgres-database-migration, schema-exploration, migrate-postgres-tables-to-hypertables · migration · verification-before-completion | [timescale/pg-aiguide](https://github.com/timescale/pg-aiguide) · caveman · superpowers || Asky | ui-ux-pro-max, design-system, ui-styling, design · frontend-design, web-artifacts-builder, canvas-design, theme-factory | [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) · [anthropics/skills](https://github.com/anthropics/skills) |# Kennel HQ
+# Kennel HQ
 
-**An AI dev team of pixel-art dogs, powered by Claude Code.**
+**An AI dev team of pixel-art dogs, plus a video studio of cats upstairs, powered by Claude Code.**
 *by Gene Elpie Landoy*
 
-A pixel-art office where a pack of dogs writes your code. Each dog is a headless Claude Code worker running on **your own Claude login** (no API key). You give them work from the terminal, from the office in your browser, or from Claude Code itself. Big requests get planned into tickets, finished work goes through QA, mistakes become lessons, and everything is saved in a shared brain inside your project.
+A two-floor pixel-art house: downstairs a pack of dogs writes your code, upstairs a studio of cats edits your videos. Each one is a headless Claude Code worker running on **your own Claude login** (no API key). You give them work from the terminal, from the office in your browser, or from Claude Code itself. Big requests get planned into tickets, finished work goes through QA, mistakes become lessons, and everything is saved in a shared brain inside your project.
 
-![The office: file panel, cubicles, your boss office, the lair, and live code changes](https://raw.githubusercontent.com/PrimeSalad/kennel-hq/main/docs/office.png)
+![The office: the cats' video studio upstairs, the dogs' office downstairs, the file panel and the pack](https://raw.githubusercontent.com/PrimeSalad/kennel-hq/main/docs/office.png)
 
 | Dog | Breed | Role | Gets work like |
 |---|---|---|---|
@@ -18,10 +18,23 @@ A pixel-art office where a pack of dogs writes your code. Each dog is a headless
 | **Biscuit** | Golden Retriever | Technical Writer | READMEs, guides, API docs, code comments, changelogs; keeps docs in sync with the code |
 | **Lucifur** | Doberman | Mentor | explains code and concepts step by step; looks like a villain, talks like a senior engineer. Never changes code. |
 
+**Upstairs: the Cattery, a video studio**
+
+| Cat | Looks | Role | Gets work like |
+|---|---|---|---|
+| **Seah** | Grey, green eyes | Lead Video Editor | cuts and pacing, FFmpeg trims/concat/reframes, Remotion edits, plans video projects for the other cats, platform delivery |
+| **Yuki** | White, lavender beret | Motion Designer | titles, intros/outros, logo reveals, lower thirds, kinetic type and animated explainers in Remotion |
+| **Shadow** | Black Persian | Colorist & VFX | color correction and grading, LUTs, HDR to SDR, denoise, stabilize, green screen keying |
+| **Snow** | Tuxedo (black and white), headphones | Sound & Captions | dialogue cleanup, music ducking, two-pass loudness to platform targets, SRT/VTT captions, burned-in or animated subtitles |
+| **Goose** | Black, yellow eyes | Shorts & Thumbnails | 9:16 Shorts/Reels/TikToks with a hook, thumbnails, GIFs, per-platform exports |
+
+The cats work on media files in your project with FFmpeg (and Remotion when the project uses it). They never overwrite your source footage: results go to new files, previews come first, and every output is checked with ffprobe. Video projects with several parts are planned by Seah instead of Chou.
+
 ## Requirements
 
 - A Claude account (Pro, Max, Team or Enterprise)
 - [Node.js](https://nodejs.org) 22+ and [Claude Code](https://claude.com/claude-code). The one-line installer below sets both up for you if they're missing.
+- For the cats' video work: [FFmpeg](https://ffmpeg.org) 6.1+ and Python 3.10+ on your PATH (and Remotion in the project if you build videos in code).
 
 ## Install
 
@@ -123,12 +136,14 @@ The terminal works like Claude Code: the pack in pixel art, a live line for each
 
 - **Files** (left): your project's files. Click one to read it. **Drag a file onto a dog** (in the room or on their card) to hand it over, then type what they should do with it. Files the dogs change get an **M** in the dog's color.
 - **You:** click **☺ You** (or your office) to set your name and look: male or female, skin, hair and outfit. You sit at the boss desk in every project, and your hands type when you type.
-- **The room:** every dog has a cubicle. **Your boss office** is top-right (a little envelope flies from your desk to the dog whenever you assign something), and **Lucifur's lair** is below it. Click a dog to follow it; double-click to chat.
+- **Two floors:** **1F, the Kennel**: every dog has a cubicle, **your boss office** is top-right (a little envelope flies from your desk to whoever you assign), and **Lucifur's lair** is below it. **2F, the Cattery**: each cat has an edit suite whose screens show what they're doing (a timeline, motion curves, color wheels, waveforms, a 9:16 preview), plus a big review monitor, a sound booth with an ON AIR light, a film set, a render farm, a cat tree and a sunny napping spot. Finished video work travels down the stairs to the brain. Click anyone to follow them; double-click to chat.
+- **The house:** it's a real little house in a yard: a shingled roof with a smoking chimney and a weathervane cat, brick walls, trees that sway and drop leaves, a fence, flowers, a mailbox and a street lamp. The sky follows your clock (sun, clouds and birds by day, stars and moon at night), and everyone breathes at their desk and hops when they finish a job.
+- **Camera:** **⌂ House** shows everything, **2F** and **1F** fly to a floor up close. Scroll to look around, Ctrl/⌘ + scroll (or **+ / −**) to zoom, drag empty space to pan, and **⛶** hides the side panels so the house fills the screen. The floor buttons show how many are working on each floor.
 - **Tasks:** every prompt you give, live and step by step. You see what the dog is writing right now, each edit as a red/green diff the moment it happens, and the answer or report when it's done (ask a question as a task and the answer shows up right there): who took it, what they read, edit and run, the diff, and the QA result. The line under the input box shows what your latest task is doing right now.
 - **On every finished task:** **↶ Undo** (puts the files back the way they were before that job), **Commit** (writes the message for you), **Run QA on this**, and a **follow-up** box to ask for more in the same session. Running tasks have **Stop**, queued ones **Cancel**. The Tasks list survives restarts.
 - **Usage:** click the 5h-limit box in the header for tokens today, per dog and per day, your Claude limits, and a daily budget.
 - **Notifications:** when a task finishes or needs you while the office is in the background, you get a desktop notification.
-- **Breaks:** a dog with nothing to do wanders off to the coffee machine, water bowl, nap corner, ball or ticket board, and runs straight back to its desk when work comes in. The terminal and `kennel status` show the same thing ("Tiger napping").
+- **Breaks:** a dog with nothing to do wanders off to the coffee machine, water bowl, nap corner, ball or ticket board (cats: the cat tree, yarn, the sunny spot, the fish bowls or the screening couch), and runs straight back to its desk when work comes in. The terminal and `kennel status` show the same thing ("Tiger napping").
 - **Pick up a dog:** drag any dog around the room; it sits where you drop it for a moment, then walks back to its desk.
 - **Pack:** each dog's live action ("Editing src/cart.ts", "$ npm test"), progress, recent work, lessons, and a box to teach them.
 - **Chat:** talk with any dog. Drop files in to show them. **Make it a task** sends the message as real work instead.
@@ -139,20 +154,25 @@ The terminal works like Claude Code: the pack in pixel art, a live line for each
 
 ## Skills
 
-Each dog gets its own set of skills from popular open-source skill repos on GitHub. Kennel downloads them the first time it runs (about 20 seconds) into `~/.kennel`, and gives each dog only its own skills as a Claude Code plugin. A skill's full text only loads when a dog actually uses it, so having them costs about 1.4k tokens per job.
+Each dog and cat gets its own set of skills from popular open-source skill repos on GitHub. Kennel downloads them the first time it runs (about 20 seconds) into `~/.kennel`, and gives each dog only its own skills as a Claude Code plugin. A skill's full text only loads when a dog actually uses it, so having them costs about 1.4k tokens per job.
 
-| Dog | Skills | From |
+| Who | Skills | From |
 |---|---|---|
-| Chou | writing-plans, brainstorming, requesting-code-review, receiving-code-review | [obra/superpowers](https://github.com/obra/superpowers) |
-| Harley | test-driven-development, systematic-debugging, verification-before-completion · surgical-patch, safe-refactor, investigate-first | superpowers · [JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman) |
-| Asky | ui-ux-pro-max, design-system, ui-styling · frontend-design, theme-factory | [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) · [anthropics/skills](https://github.com/anthropics/skills) |
-| Bacon | postgres, design-postgres-tables, postgres-database-migration, schema-exploration · migration | [timescale/pg-aiguide](https://github.com/timescale/pg-aiguide) · caveman |
-| Pitchie | webapp-testing · test-driven-development, verification-before-completion · verify-and-stop | anthropics/skills · superpowers · caveman |
-| Tiger | terrashark · finishing-a-development-branch · lean-build, verify-and-stop | [LukasNiessen/terrashark](https://github.com/LukasNiessen/terrashark) · superpowers · caveman |
-| Biscuit | humanizer | [blader/humanizer](https://github.com/blader/humanizer) |
-| Lucifur | systematic-debugging · investigate-first | superpowers · caveman |
+| Chou | writing-plans, executing-plans, brainstorming, requesting-code-review, receiving-code-review · caveman-review | [obra/superpowers](https://github.com/obra/superpowers) · caveman |
+| Harley | test-driven-development, systematic-debugging, verification-before-completion · surgical-patch, safe-refactor, investigate-first · mcp-builder, claude-api | superpowers · [JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman) · [anthropics/skills](https://github.com/anthropics/skills) |
+| Asky | ui-ux-pro-max, design-system, ui-styling, design · frontend-design, web-artifacts-builder, canvas-design, theme-factory, algorithmic-art | [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) · anthropics/skills |
+| Bacon | postgres, design-postgres-tables, postgres-database-migration, schema-exploration, migrate-postgres-tables-to-hypertables · migration · verification-before-completion | [timescale/pg-aiguide](https://github.com/timescale/pg-aiguide) · caveman · superpowers |
+| Pitchie | webapp-testing · test-driven-development, verification-before-completion, systematic-debugging · caveman-review, verify-and-stop | anthropics/skills · superpowers · caveman |
+| Tiger | terrashark · finishing-a-development-branch, using-git-worktrees, verification-before-completion · caveman-commit, lean-build, verify-and-stop | [LukasNiessen/terrashark](https://github.com/LukasNiessen/terrashark) · superpowers · caveman |
+| Biscuit | humanizer · doc-coauthoring, internal-comms, docx, pdf, pptx, xlsx · writing-skills | [blader/humanizer](https://github.com/blader/humanizer) · anthropics/skills · superpowers |
+| Lucifur | caveman-explore, investigate-first · systematic-debugging, brainstorming, receiving-code-review | caveman · superpowers |
+| Seah | ffmpeg-skill · remotion-best-practices, remotion-render, remotion-multimedia · writing-plans, verification-before-completion | [kajisho5/ffmpeg-skill](https://github.com/kajisho5/ffmpeg-skill) · [remotion-dev/skills](https://github.com/remotion-dev/skills) · superpowers |
+| Yuki | remotion-motion-graphics · remotion-best-practices, remotion-create, remotion-render · algorithmic-art, canvas-design | [haidrrrry/claude-remotion-skill](https://github.com/haidrrrry/claude-remotion-skill) · remotion-dev/skills · anthropics/skills |
+| Shadow | ffmpeg-skill · remotion-multimedia, remotion-best-practices · canvas-design · verification-before-completion | ffmpeg-skill · remotion-dev/skills · anthropics/skills · superpowers |
+| Snow | ffmpeg-skill · remotion-captions, remotion-multimedia · verification-before-completion | ffmpeg-skill · remotion-dev/skills · superpowers |
+| Goose | ffmpeg-skill · remotion-best-practices, remotion-render · canvas-design, slack-gif-creator | ffmpeg-skill · remotion-dev/skills · anthropics/skills |
 
-All of them are MIT or Apache-2.0 and are used unchanged. Each skill folder keeps its upstream license, and `~/.kennel/dogs/<dog>/CREDITS.md` lists the sources. `/skills` shows them; `/skills update` downloads the latest versions.
+All of them are MIT or Apache-2.0, except Remotion's official skills, which their repo publishes without a license file (Kennel downloads them on your machine, as `npx skills add` would). All are used unchanged. If a download fails (say you're offline), each dog or cat keeps the skills it already had. Each skill folder keeps its upstream license, and `~/.kennel/dogs/<dog>/CREDITS.md` lists the sources. `/skills` shows them; `/skills update` downloads the latest versions.
 
 ## Use it from Claude Code (the skill)
 

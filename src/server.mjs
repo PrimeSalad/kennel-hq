@@ -97,7 +97,7 @@ const QA_DELAY_MS = 12_000;      // wait this long after the pack goes quiet bef
 const SMALL_DIFF_LINES = 8;      // changes this small that the dog already tested skip QA
 const QA_OFF_AT = 0.80;          // 5h limit usage where QA is skipped
 const PAUSE_AT = 0.95;           // 5h limit usage where new work waits for the reset
-const DOC_FILE = /\.(md|mdx|txt|rst|png|jpe?g|gif|svg|webp|ico)$/i;
+const DOC_FILE = /\.(md|mdx|txt|rst|png|jpe?g|gif|svg|webp|ico|mp4|mov|mkv|webm|avi|m4v|wav|mp3|m4a|aac|flac|ogg|srt|vtt|ass|cube|psd)$/i;
 
 const PUBLIC = path.join(here, '..', 'public');
 const BRAIN_DIR = path.join(WORKDIR, '.kennel');
@@ -167,9 +167,60 @@ Make interfaces distinctive and intentional, never generic AI-looking. If design
     name: 'Lucifur', breed: 'Doberman', role: 'Mentor', rgb: [239, 68, 68], types: ['Lesson'], readOnly: true,
     job: 'Teach. Explain how the code works, why something broke, and the concepts behind it, at the level the human needs, using small examples from this very project. Go step by step, and end with the one thing worth remembering. You never change code.',
   },
+
+  // The Cattery: the video studio upstairs. Cats, because editors keep cat hours.
+  seah: {
+    name: 'Seah', breed: 'Grey cat', animal: 'cat', role: 'Lead Video Editor', rgb: [124, 214, 168], types: ['Video', 'Decision'],
+    job: `Lead the video studio and own the edit. Your craft:
+- Story and pacing: find the hook in the first 2 seconds, cut on action and on the beat, remove dead air, J- and L-cuts, keep a rhythm.
+- FFmpeg: trim, concat, reframe (16:9, 9:16, 1:1, 4:5), speed ramps, overlays, picture-in-picture, crossfades, frame-accurate seeking. Re-encode with sane defaults (H.264 yuv420p, +faststart, CRF 18–23) unless the project says otherwise.
+- Remotion (React video) when the edit is built in code: compositions, sequences, timing in frames, rendering.
+- Plan multi-part video jobs for the other cats: Yuki (motion), Shadow (color/VFX), Snow (sound/captions), Goose (shorts/thumbnails).
+- Delivery: platform specs (YouTube 16:9, Shorts/Reels/TikTok 9:16 under their length limits), file size targets, bitrate.`,
+  },
+  yuki: {
+    name: 'Yuki', breed: 'White cat', animal: 'cat', role: 'Motion Designer', rgb: [196, 181, 253], types: ['Video', 'Design'],
+    job: `Design and build motion graphics in code, mostly Remotion (React video), sometimes HTML/CSS/SVG/Lottie.
+- Titles, intros/outros, logo reveals, lower thirds, kinetic typography, animated charts and explainers, transitions.
+- Motion craft: never linear easing, springs for entrances, stagger elements by a few frames, exits faster than entrances, a clear type hierarchy and a limited palette, safe margins for every aspect ratio.
+- Build reusable components with props (text, colors, duration) so edits are cheap. Preview at low resolution before a full render.`,
+  },
+  shadow: {
+    name: 'Shadow', breed: 'Black Persian', animal: 'cat', role: 'Colorist & VFX', rgb: [251, 146, 60], types: ['Video'],
+    job: `Own how the footage looks.
+- Color: correct first (exposure, white balance, contrast), then grade (look, mood, skin tones). Apply and build LUTs (.cube), match shots to each other, keep broadcast-safe levels.
+- FFmpeg filters: eq, curves, colorbalance, lut3d, colorspace/zscale (HDR to SDR tone mapping), denoise (hqdn3d/nlmeans), sharpen (unsharp), deband, stabilize (vidstab), chroma key (chromakey/colorkey + despill), masks and compositing.
+- Always grade from the original source, never re-grade an already graded export. Compare before/after stills (extract a frame) and say what changed.`,
+  },
+  snow: {
+    name: 'Snow', breed: 'Tuxedo cat', animal: 'cat', role: 'Sound & Captions', rgb: [125, 211, 252], types: ['Video', 'Docs'],
+    job: `Own everything you hear and read in a video.
+- Audio: clean dialogue (highpass, de-noise with afftdn/arnndn, de-ess, compression), music beds with ducking under voice (sidechaincompress), fades, sync audio to video, remove silences.
+- Loudness: two-pass loudnorm to the platform target (about -14 LUFS for YouTube/streaming, -16 for podcasts, true peak -1 dBTP), and report the measured values.
+- Captions: transcribe when a tool is available (whisper/faster-whisper), write SRT/VTT with good line breaks (max ~42 chars, 2 lines, reading speed), burn them in with styled subtitles or animated Remotion captions, and translate them when asked.`,
+  },
+  goose: {
+    name: 'Goose', breed: 'Black cat', animal: 'cat', role: 'Shorts & Thumbnails', rgb: [250, 204, 21], types: ['Video', 'Design'],
+    job: `Turn videos into things people click and watch on every platform.
+- Shorts/Reels/TikTok: find the strongest moments, cut 15–60 s vertical versions with a hook in the first second, reframe to 9:16 keeping the subject centered, big readable captions inside the safe zone.
+- Thumbnails and cover frames: pick or extract the best frame, design bold, high-contrast thumbnails (1280×720) with few words; also GIF and still exports.
+- Delivery: export per-platform files with correct resolution, fps, bitrate and duration limits, plus titles, descriptions, chapters and hashtags when asked.`,
+  },
 };
+// Video work needs tools on the machine; tell the cats how to work with media safely.
+const VIDEO_RULES = `Working with media:
+- Check your tools first (ffmpeg -version, ffprobe, node/Remotion in package.json, python3 for scripts). If something essential is missing, say exactly how to install it instead of faking the result.
+- ffprobe every input before you touch it (duration, resolution, fps, codecs, audio channels). Never overwrite or re-encode the source files: write results to a new file (an out/ or exports/ folder, or name-edit.mp4).
+- Test on a short excerpt or a low-resolution preview first, then do the full render. Long renders: run them once, at the end.
+- Verify the output with ffprobe (duration, streams, size) and, for visual changes, extract a frame to check. Report the output path, length, resolution and file size.`;
 const IDS = Object.keys(DOGS);
 const ROUTES = [
+  ['snow', /\b(audio|sound|music|voice ?over|loudness|lufs|podcast|subtitles?|captions?|srt|vtt|transcribe|transcript|ducking|denoise)\b/i],
+  ['shadow', /\b(colou?r ?grad\w*|grade|lut|luts|vfx|green ?screen|chroma|stabili[sz]e|hdr|tone ?map\w*)\b/i],
+  ['goose', /\b(shorts?|reels?|tiktok|thumbnails?|vertical video|gif)\b/i],
+  ['yuki', /\b(motion graphics?|remotion|lower thirds?|intro|outro|logo reveal|kinetic|title card)\b/i],
+  ['seah', /\b(video|videos|footage|clip|clips|ffmpeg|montage|timeline|b-?roll|vlog|youtube)\b/i],
+
   ['bacon', /\b(db|database|sql|query|queries|index|indexes|migration|migrations|schema|table|tables|postgres|mysql|mongo|sqlite|prisma|supabase|backup|redis)\b/i],
   ['pitchie', /\b(test|tests|testing|qa|bug|bugs|regression|e2e|verify|repro|flaky)\b/i],
   ['tiger', /\b(deploy|deployment|ci|cd|docker|dockerfile|k8s|kubernetes|infra|server|servers|pipeline|release|devops|aws|nginx|dns|ssl|cloudflare)\b/i],
@@ -180,6 +231,9 @@ const ROUTES = [
 ];
 const route = text => (ROUTES.find(([, re]) => re.test(text)) || ['harley'])[0];
 // A request gets planned into tickets when it's long or clearly has several parts.
+// Video projects are planned by Seah (the studio lead) instead of Chou.
+const VIDEO_WORK = /\b(video|videos|footage|clips?|reels?|shorts?|tiktok|youtube|vlog|montage|trailer|teaser|promo video|motion graphics|remotion|ffmpeg|subtitles?|captions?|color ?grad\w*|thumbnails?)\b/i;
+const plannerFor = text => (VIDEO_WORK.test(text) ? 'seah' : 'chou');
 const needsPlan = text => text.length > 220 || (text.match(/\b(and then|then|tapos|saka|also|plus|pati)\b|;|\n|\d\)\s/gi) || []).length >= 2;
 
 /* ================================================================== storage */
@@ -401,10 +455,11 @@ LESSON: one short, reusable rule you learned about this project or your own work
 ---
 <report in Markdown. If the human asked a question, start with the direct, complete answer to it. Then: what you changed (file paths), what you ran to verify it and the result, anything the human must run or decide. If nothing needed changing, just answer.>`
     : 'Use the reply format given in the request.';
-  return `You are ${d.name}, a ${d.breed} who works as the ${d.role} at Kennel HQ, a small software team of dogs: ${team}. The human who runs the team gives you work in the project folder you're in.
+  const where = d.animal === 'cat' ? 'in the Cattery, Kennel HQ\'s video studio upstairs' : 'at Kennel HQ';
+  return `You are ${d.name}, a ${d.breed} who works as the ${d.role} ${where}. Kennel HQ is a small team: dogs build software downstairs and cats make videos upstairs (${team}). The human who runs the team gives you work in the project folder you're in.
 
 Your job: ${d.job}
-${hasSkills(id) ? `
+${d.animal === 'cat' ? `\n${VIDEO_RULES}\n` : ''}${hasSkills(id) ? `
 Your skills (use the Skill tool when one fits the job; don't load ones that don't): ${skillNames(id).join(', ')}.
 ` : ''}
 ${ACCESS_TEXT[kind === 'plan' || d.readOnly ? 'read-only' : ACCESS]}
@@ -457,11 +512,11 @@ function brainContext(text, limit = 8) {
 }
 
 function planPrompt(task) {
-  return `Break this request from the human into tickets for the team. Don't do the work yourself. Only look at as much of the project as you need to plan well, and keep it quick.
+  return `Break this request from the human into tickets for the team (software dogs and video cats). Don't do the work yourself. Only look at as much of the project as you need to plan well, and keep it quick.
 
 Rules:
 - As few tickets as possible (1 to 6). If one dog can do it all, make one ticket.
-- Give each ticket to the best dog: harley (app code), asky (UI/UX design and styling, built in code), biscuit (documentation: READMEs, guides, API docs, changelogs), bacon (database), pitchie (tests), tiger (CI, deploy, infra), chou (decisions, reviews), lucifur (explanations and teaching notes; he can't change code).
+- Give each ticket to the best dog: harley (app code), asky (UI/UX design and styling, built in code), biscuit (documentation: READMEs, guides, API docs, changelogs), bacon (database), pitchie (tests), tiger (CI, deploy, infra), chou (decisions, reviews), lucifur (explanations and teaching notes; he can't change code); the video studio cats: seah (video editing, cuts, ffmpeg, delivery), yuki (motion graphics, Remotion animation, titles), shadow (color grading, VFX, green screen), snow (audio, music, loudness, captions/subtitles), goose (shorts/reels, thumbnails, platform exports).
 - Tickets that touch the same files must be ordered with "after", not run in parallel.
 - Don't add a ticket just to test or review the work; QA runs automatically at the end. Only give Pitchie a ticket if the human asked for tests.
 
@@ -556,7 +611,7 @@ function assign(text, dogId, from = 'web', forcePlan = false, files = [], brief 
   const base = { title: short(text.replace(/\s+/g, ' ')), text: full, userText: text, from, brief, triage, size, claims };
   if (DOGS[dogId]) return enqueue({ dog: dogId, ...base });
   if (PLAN && (forcePlan || needsPlan(text))) {
-    return enqueue({ ...base, dog: 'chou', kind: 'plan', title: short(`Plan: ${base.title}`), rootTitle: base.title, claims: [] });
+    return enqueue({ ...base, dog: plannerFor(text), kind: 'plan', title: short(`Plan: ${base.title}`), rootTitle: base.title, claims: [] });
   }
   return enqueue({ dog: route(text), ...base });
 }
@@ -608,7 +663,7 @@ function liveBoard() {
 }
 
 function triagePrompt(batch, board) {
-  const team = 'chou (lead dev: planning, reviews, decisions), harley (app code), asky (UI/UX design and styling), biscuit (documentation), bacon (database), pitchie (tests/QA), tiger (CI, deploy, infra), lucifur (explains code; read-only)';
+  const team = 'chou (lead dev: planning, reviews, decisions), harley (app code), asky (UI/UX design and styling), biscuit (documentation), bacon (database), pitchie (tests/QA), tiger (CI, deploy, infra), lucifur (explains code; read-only); video studio cats: seah (lead video editor: cuts, pacing, ffmpeg, exports), yuki (motion graphics: Remotion animation, titles, intros), shadow (color grading, VFX, green screen), snow (audio mix, loudness, captions/subtitles), goose (shorts/reels, thumbnails, platform delivery)';
   const paths = projectFiles().list.filter(p => !DOC_FILE.test(p) || /readme/i.test(p)).slice(0, 150).join('\n');
   const msgs = batch.map((m, i) => `[${i + 1}]${m.dogId ? ` (addressed to ${m.dogId})` : ''}${m.files.length ? ` (files attached: ${m.files.join(', ')})` : ''}\n"""${m.text}"""`).join('\n\n');
   return `Team: ${team}.
@@ -805,7 +860,7 @@ function decide(it) {
   }
   const plan = d.action === 'plan';
   const size = ['small', 'medium', 'large'].includes(d.size) ? d.size : '';
-  emit({ type: 'triage', tid, action: plan ? 'plan' : 'task', dog, brief, size, tokens: it.tokens, model: it.model });
+  emit({ type: 'triage', tid, action: plan ? 'plan' : 'task', dog, brief, size, planner: plan ? plannerFor(text) : undefined, tokens: it.tokens, model: it.model });
   it.done = true;
   const task = assign(text, dog, from, plan, files, brief, tid, size, claims);
   it.resolve({ id: task.id, dog: task.dog, kind: task.kind });
@@ -904,7 +959,14 @@ const ITEMS = {
   bed: { name: 'nap corner', verb: 'napping', seats: 2, weight: 2, secs: [60, 120] },
   ball: { name: 'ball', verb: 'playing ball', seats: 2, weight: 2, secs: [30, 60] },
   board: { name: 'ticket board', verb: 'reading the ticket board', seats: 1, weight: 2, secs: [15, 30] },
+  // upstairs, for the cats
+  cattree: { name: 'cat tree', verb: 'lounging on the cat tree', seats: 2, weight: 3, secs: [40, 90], cat: true },
+  yarn: { name: 'yarn ball', verb: 'chasing the yarn', seats: 2, weight: 2, secs: [20, 45], cat: true },
+  sunspot: { name: 'sunny spot', verb: 'napping in the sun', seats: 2, weight: 3, secs: [60, 140], cat: true },
+  bowls: { name: 'fish bowls', verb: 'having a fish snack', seats: 2, weight: 2, secs: [15, 30], cat: true },
+  couch: { name: 'screening couch', verb: 'watching the dailies', seats: 2, weight: 2, secs: [30, 70], cat: true },
 };
+const isCat = id => DOGS[id]?.animal === 'cat';
 const HOMEBODIES = new Set(['lucifur']); // the mentor never leaves the lair
 const activity = {}; // dog -> { item, seat, label, since, until }
 const nextIdleAt = Object.fromEntries(IDS.map(id => [id, Date.now() + (10 + Math.random() * 50) * 1000]));
@@ -925,7 +987,7 @@ function backToDesk(dog) {
 function pickItem(dog) {
   const taken = {};
   for (const a of Object.values(activity)) taken[a.item] = (taken[a.item] || []).concat(a.seat);
-  const free = Object.entries(ITEMS).filter(([k, it]) => k !== lastItem[dog] && (taken[k] || []).length < it.seats);
+  const free = Object.entries(ITEMS).filter(([k, it]) => Boolean(it.cat) === isCat(dog) && k !== lastItem[dog] && (taken[k] || []).length < it.seats);
   if (!free.length) return null;
   let r = Math.random() * free.reduce((s, [, it]) => s + it.weight, 0);
   const [item] = free.find(([, it]) => (r -= it.weight) < 0) || free[0];
@@ -1224,7 +1286,7 @@ function finishPlan(task, text) {
     const deps = (m[4].match(/\d+/g) || []).filter(x => ids[x] && x !== n).map(x => ids[x]);
     return { id: ids[n], n, dog, title: short(m[3]), detail, deps };
   });
-  emit({ type: 'plan', dog: 'chou', request: task.rootTitle, plan: task.id, tickets: tickets.map(t => ({ id: t.id, n: t.n, dog: t.dog, title: t.title, after: t.deps.map(id => tickets.find(x => x.id === id)?.n) })) });
+  emit({ type: 'plan', dog: task.dog, request: task.rootTitle, plan: task.id, tickets: tickets.map(t => ({ id: t.id, n: t.n, dog: t.dog, title: t.title, after: t.deps.map(id => tickets.find(x => x.id === id)?.n) })) });
   for (const t of tickets) {
     enqueue({
       id: t.id, dog: t.dog, title: t.title, deps: t.deps, from: task.from, planId: task.id, claims: filesIn(t.detail),
@@ -1888,7 +1950,7 @@ listeners.add(ev => {
   if (ev.type === 'queued') {
     const { kind, title, from, waitsFor } = ev.task;
     const t = title.replace(/^(QA|Fix|Plan): /, '');
-    if (kind === 'plan') out(`\n${dot('chou')} ${nm('chou')} ${c(AMBER, 'is planning')} ${dim('“')}${t}${dim('”')}`);
+    if (kind === 'plan') out(`\n${dot(ev.dog)} ${nm(ev.dog)} ${c(AMBER, 'is planning')} ${dim('“')}${t}${dim('”')}`);
     else if (kind === 'review') out(`\n${dot(ev.dog)} ${nm(ev.dog)} ${c(AMBER, 'QA check')} ${dim(t)}`);
     else if (kind === 'fix') out(`\n${dot(ev.dog)} ${nm(ev.dog)} ${c(AMBER, 'is fixing')} ${t}`);
     else out(`\n${dot(ev.dog)} ${nm(ev.dog)} ${dim('←')} ${t}${waitsFor ? dim('  · waits for an earlier ticket') : ''}${from === 'web' ? dim('  · from the office') : from === 'cli' ? dim('  · from Claude Code') : ''}`);
@@ -1944,7 +2006,7 @@ listeners.add(ev => {
     else if (ev.action === 'fix') out(`  ${dim('⎿')}  ${dim('a correction: back to')} ${nm(ev.dog)} ${dim('to fix it in the same session, and they\'ll learn from it')}`);
     else if (ev.action === 'same') out(`  ${dim('⎿')}  ${ev.reply || 'already on it'} ${dim(`(job ${ev.job}, nothing new started)`)}`);
     else if (ev.action === 'with') out(`  ${dim('⎿')}  ${dim('same work as your previous message: merged into one job')}`);
-    else if (!ev.fallback) out(`  ${dim('⎿')}  ${dim(ev.action === 'plan' ? 'a big one: to Chou for planning' : 'real work: to')} ${ev.action === 'plan' ? '' : nm(ev.dog || route(''))}${ev.brief ? `\n     ${dim('brief:')} ${ev.brief}` : ''}`);
+    else if (!ev.fallback) out(`  ${dim('⎿')}  ${dim(ev.action === 'plan' ? `a big one: to ${DOGS[ev.planner]?.name || 'Chou'} for planning` : 'real work: to')} ${ev.action === 'plan' ? '' : nm(ev.dog || route(''))}${ev.brief ? `\n     ${dim('brief:')} ${ev.brief}` : ''}`);
   }
   if (ev.type === 'merged') out(`  ${dim('⎿')}  ${nm(ev.dog)} ${dim('will also:')} ${ev.text}`);
   if (ev.type === 'hold') out(`  ${dim('⎿')}  ${nm(ev.dog)} ${dim(`waits for ${DOGS[ev.by].name} to finish with ${ev.files.join(', ')}`)}`);
@@ -2226,13 +2288,16 @@ function banner() {
     lines.push(`  ${dim('crafted by')} ${bold(c(PINK, AUTHOR))}  ${dim('· a pack of Claude Code workers')}`);
   }
   const cell = 13;
-  if (tty && cols >= IDS.length * cell + 2) {
-    lines.push('');
-    const heads = IDS.map(id => mini(id));
-    for (let r = 0; r < heads[0].length; r++) lines.push(`  ${heads.map(h => h[r]).join('  ')}`);
+  const dogs = IDS.filter(id => !isCat(id)), cats = IDS.filter(isCat);
+  if (tty && cols >= dogs.length * cell + 2) {
     const center = (s, raw) => { const l = Math.max(0, Math.floor((11 - raw.length) / 2)); return ' '.repeat(l) + s + ' '.repeat(Math.max(0, 11 - raw.length - l)); };
-    lines.push(`  ${IDS.map(id => center(c(DOGS[id].rgb, DOGS[id].name), DOGS[id].name)).join('  ')}`);
-  } else if (tty) lines.push(`  ${IDS.map(id => c(DOGS[id].rgb, DOGS[id].name)).join(dim(' · '))}`);
+    for (const [label, group] of [['the pack · software, downstairs', dogs], ['the cattery · video studio, upstairs', cats]]) {
+      lines.push('', `  ${dim(label)}`);
+      const heads = group.map(id => mini(id));
+      for (let r = 0; r < heads[0].length; r++) lines.push(`  ${heads.map(h => h[r]).join('  ')}`);
+      lines.push(`  ${group.map(id => center(c(DOGS[id].rgb, DOGS[id].name), DOGS[id].name)).join('  ')}`);
+    }
+  } else if (tty) lines.push(`  ${dogs.map(id => c(DOGS[id].rgb, DOGS[id].name)).join(dim(' · '))}`, `  ${cats.map(id => c(DOGS[id].rgb, DOGS[id].name)).join(dim(' · '))}`);
   lines.push('');
   const W = Math.min(cols, 92);
   const g = s => c(GRAY, s);
