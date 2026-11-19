@@ -541,6 +541,7 @@ function enqueue(task, front = false) {
   task.rootText ||= task.text; task.rootTitle ||= task.title;
   if (task.kind !== 'review') clearTimeout(qaTimer);
   if (front) queues[task.dog].unshift(task); else queues[task.dog].push(task);
+  backToDesk(task.dog);
   emit({ type: 'queued', dog: task.dog, task: { id: task.id, title: task.title, from: task.from, kind: task.kind, waitsFor: task.deps.length, brief: task.brief,
     parent: task.followOf || task.fixOf || task.planId || task.triage || null, follow: Boolean(task.followOf), targets: task.kind === 'review' ? task.items.map(i => i.memId) : undefined } });
   pumpAll();
@@ -880,6 +881,7 @@ function start(task) {
   }
   if ((task.kind === 'task' || task.kind === 'fix') && !DOGS[dog].readOnly && ACCESS !== 'read-only') task.checkpoint = checkpoint();
   current[dog] = { ...task, chars: 0, out: '', files: new Set(), ranCmd: false, proc: null, started: Date.now(), action: 'Thinking…' };
+  backToDesk(dog);
   emit({ type: 'start', dog, task: { id: task.id, title: task.title, kind: task.kind } });
   work(task)
     .then(() => doneIds.add(task.id))
@@ -892,6 +894,69 @@ function start(task) {
     })
     .finally(() => { delete current[dog]; pumpAll(); scheduleQA(); });
 }
+
+/* ================================================================== idle activities */
+// A dog with nothing to do walks to an office item and uses it; a new job sends it straight back to its desk.
+// The server decides who is where, so the web office, the terminal and `kennel status` all show the same thing.
+const ITEMS = {
+  coffee: { name: 'coffee machine', verb: 'getting coffee', seats: 2, weight: 3, secs: [25, 50] },
+  water: { name: 'water bowl', verb: 'drinking water', seats: 2, weight: 3, secs: [15, 30] },
+  bed: { name: 'nap corner', verb: 'napping', seats: 2, weight: 2, secs: [60, 120] },
+  ball: { name: 'ball', verb: 'playing ball', seats: 2, weight: 2, secs: [30, 60] },
+  board: { name: 'ticket board', verb: 'reading the ticket board', seats: 1, weight: 2, secs: [15, 30] },
+};
+const HOMEBODIES = new Set(['lucifur']); // the mentor never leaves the lair
+const activity = {}; // dog -> { item, seat, label, since, until }
+const nextIdleAt = Object.fromEntries(IDS.map(id => [id, Date.now() + (10 + Math.random() * 50) * 1000]));
+const lastItem = {};
+const between = ([a, b]) => (a + Math.random() * (b - a)) * 1000;
+const hasWork = dog => Boolean(current[dog] || chatting[dog] || queues[dog].length);
+const openTickets = () => IDS.reduce((n, id) => n + (current[id] && current[id].kind !== 'review' ? 1 : 0) + queues[id].filter(t => t.kind !== 'review').length, 0);
+const activityLabel = id => (activity[id] ? activity[id].label : '');
+
+/** Send a dog back to its desk (it has work now) and let it rest a while before wandering again. */
+function backToDesk(dog) {
+  nextIdleAt[dog] = Date.now() + between([20, 45]);
+  if (!activity[dog]) return;
+  delete activity[dog];
+  emit({ type: 'activity', dog, item: null });
+}
+
+function pickItem(dog) {
+  const taken = {};
+  for (const a of Object.values(activity)) taken[a.item] = (taken[a.item] || []).concat(a.seat);
+  const free = Object.entries(ITEMS).filter(([k, it]) => k !== lastItem[dog] && (taken[k] || []).length < it.seats);
+  if (!free.length) return null;
+  let r = Math.random() * free.reduce((s, [, it]) => s + it.weight, 0);
+  const [item] = free.find(([, it]) => (r -= it.weight) < 0) || free[0];
+  const seat = [...Array(ITEMS[item].seats).keys()].find(s => !(taken[item] || []).includes(s));
+  return { item, seat };
+}
+
+function idleTick() {
+  const now = Date.now();
+  for (const dog of IDS) {
+    if (HOMEBODIES.has(dog)) continue;
+    if (hasWork(dog)) { backToDesk(dog); continue; }
+    const a = activity[dog];
+    if (a && now >= a.until) {
+      delete activity[dog];
+      nextIdleAt[dog] = now + between([20, 60]);
+      emit({ type: 'activity', dog, item: null });
+      continue;
+    }
+    if (a || paused || now < nextIdleAt[dog]) continue;
+    const pick = pickItem(dog);
+    if (!pick) { nextIdleAt[dog] = now + between([10, 20]); continue; } // every item is in use: stay at the desk
+    const it = ITEMS[pick.item];
+    const n = openTickets();
+    const label = pick.item === 'board' ? (n ? `reading the ticket board (${n} open)` : 'checking the ticket board: all clear') : it.verb;
+    activity[dog] = { ...pick, label, since: now, until: now + between(it.secs) };
+    lastItem[dog] = pick.item;
+    emit({ type: 'activity', dog, item: pick.item, seat: pick.seat, label });
+  }
+}
+setInterval(idleTick, 4000).unref();
 
 function stop(dog) {
   const cur = current[dog];
@@ -1323,6 +1388,7 @@ function chat(dog, text, files = []) {
   const prompt = `${thread.session ? '' : `<team_brain>\n${brainContext(text, 5)}\n</team_brain>\n\n`}${text}${files.length ? `\n\n(Files attached: ${files.join(', ')})` : ''}`;
 
   const st = (chatting[dog] = { started: Date.now(), action: 'Thinking…', out: '', proc: null });
+  backToDesk(dog);
   emit({ type: 'chat-start', dog });
   const child = spawn(CLAUDE, args, { cwd: WORKDIR, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
   st.proc = child;
@@ -1618,6 +1684,7 @@ async function handle(req, res, remote) {
       current: Object.fromEntries(Object.entries(current).map(([k, c]) => [k, { id: c.id, title: c.title, chars: c.chars, kind: c.kind, action: strip(c.action || '') }])),
       chatting: Object.fromEntries(Object.entries(chatting).map(([k, s]) => [k, { action: s.action, text: s.out }])),
       queues: Object.fromEntries(IDS.map(k => [k, queues[k].length])),
+      activities: Object.fromEntries(Object.entries(activity).map(([k, a]) => [k, { item: a.item, seat: a.seat, label: a.label, since: a.since }])),
     });
   }
   if (p === '/api/remote') {
@@ -1772,12 +1839,23 @@ function statusLines(frame) {
   });
   const queued = IDS.reduce((a, id) => a + queues[id].length, 0);
   const idle = IDS.filter(id => !current[id] && !chatting[id]);
-  if (!lines.length && !queued) return [dim(`  ${idle.map(id => DOGS[id].name).join(' · ')}  ready for a task`)];
+  if (!lines.length && !queued) return [dim(`  no tickets · ${idleSummary(idle)}`)];
   const tail = [];
-  if (idle.length) tail.push(`idle: ${idle.map(id => DOGS[id].name).join(', ')}`);
+  if (idle.length) tail.push(`idle: ${idleSummary(idle)}`);
+  else tail.push('the whole pack is busy');
   if (queued) tail.push(`${queued} queued`);
   if (tail.length) lines.push(dim(`  ${tail.join(' · ')}`));
   return lines;
+}
+
+// "Chou, Tiger napping · Bacon getting coffee · Harley at the desk": idle dogs grouped by what they're doing.
+function idleSummary(ids) {
+  const groups = new Map();
+  for (const id of ids) {
+    const what = activity[id] ? ITEMS[activity[id].item].verb : 'at the desk';
+    groups.set(what, [...(groups.get(what) || []), DOGS[id].name]);
+  }
+  return [...groups].map(([what, names]) => `${names.join(', ')} ${what}`).join(' · ');
 }
 
 function footerLine(cols, hint) {
@@ -1920,7 +1998,7 @@ function status() {
     const cur = current[id];
     const waiting = queues[id].filter(t => !t.deps.every(d => doneIds.has(d))).length;
     const q = queues[id].length;
-    const doing = cur ? `${{ review: 'QA', fix: 'fixing', plan: 'planning' }[cur.kind] || 'working on'} “${cur.title.replace(/^(QA|Fix|Plan): /, '')}”${cur.files.size ? dim(` · edited ${cur.files.size} file(s)`) : ''}` : dim('idle');
+    const doing = cur ? `${{ review: 'QA', fix: 'fixing', plan: 'planning' }[cur.kind] || 'working on'} “${cur.title.replace(/^(QA|Fix|Plan): /, '')}”${cur.files.size ? dim(` · edited ${cur.files.size} file(s)`) : ''}` : dim(activity[id] ? `idle · ${activityLabel(id)}` : 'idle');
     out(`  ${dn(id).padEnd(tty ? 30 : 8)} ${dim(DOGS[id].role.padEnd(18))} ${doing}${q ? dim(`  +${q} queued${waiting ? ` (${waiting} waiting on other tickets)` : ''}`) : ''}`);
   }
   const pend = brain.filter(m => m.status === 'pending-qa').length;

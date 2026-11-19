@@ -1,4 +1,4 @@
-# Kennel HQ
+| Lucifur | caveman-explore, investigate-first · systematic-debugging, brainstorming, receiving-code-review | caveman · superpowers || Biscuit | humanizer · doc-coauthoring, internal-comms · writing-skills | [blader/humanizer](https://github.com/blader/humanizer) · anthropics/skills · superpowers || Tiger | terrashark · finishing-a-development-branch, using-git-worktrees, verification-before-completion · caveman-commit, lean-build, verify-and-stop | [LukasNiessen/terrashark](https://github.com/LukasNiessen/terrashark) · superpowers · caveman || Pitchie | webapp-testing · test-driven-development, verification-before-completion, systematic-debugging · caveman-review, verify-and-stop | anthropics/skills · superpowers · caveman || Bacon | postgres, design-postgres-tables, postgres-database-migration, schema-exploration, migrate-postgres-tables-to-hypertables · migration · verification-before-completion | [timescale/pg-aiguide](https://github.com/timescale/pg-aiguide) · caveman · superpowers || Asky | ui-ux-pro-max, design-system, ui-styling, design · frontend-design, web-artifacts-builder, canvas-design, theme-factory | [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) · [anthropics/skills](https://github.com/anthropics/skills) |# Kennel HQ
 
 **An AI dev team of pixel-art dogs, powered by Claude Code.**
 *by Gene Elpie Landoy*
@@ -130,6 +130,7 @@ The terminal works like Claude Code: the pack in pixel art, a live line for each
 - **On every finished task:** **↶ Undo** (puts the files back the way they were before that job), **Commit** (writes the message for you), **Run QA on this**, and a **follow-up** box to ask for more in the same session. Running tasks have **Stop**, queued ones **Cancel**. The Tasks list survives restarts.
 - **Usage:** click the 5h-limit box in the header for tokens today, per dog and per day, your Claude limits, and a daily budget.
 - **Notifications:** when a task finishes or needs you while the office is in the background, you get a desktop notification.
+- **Breaks:** a dog with nothing to do wanders off to the coffee machine, water bowl, nap corner, ball or ticket board, and runs straight back to its desk when work comes in. The terminal and `kennel status` show the same thing ("Tiger napping").
 - **Pick up a dog:** drag any dog around the room; it sits where you drop it for a moment, then walks back to its desk.
 - **Pack:** each dog's live action ("Editing src/cart.ts", "$ npm test"), progress, recent work, lessons, and a box to teach them.
 - **Chat:** talk with any dog. Drop files in to show them. **Make it a task** sends the message as real work instead.

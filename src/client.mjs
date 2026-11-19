@@ -138,9 +138,13 @@ function printStatus(s, base) {
   console.log(`Kennel HQ · ${s.folder} · ${base.replace('127.0.0.1', 'localhost')} · access: ${s.access} · QA: ${s.review ? 'on' : 'off'}${s.paused ? ' · PAUSED (limit)' : ''}`);
   for (const id of Object.keys(s.queues)) {
     const c = s.current[id];
-    const what = c ? `${{ review: 'QA', fix: 'fixing', plan: 'planning' }[c.kind] || 'working on'}: ${c.title.replace(/^(QA|Fix|Plan): /, '')}` : 'idle';
+    const act = s.activities?.[id];
+    const what = c ? `${{ review: 'QA', fix: 'fixing', plan: 'planning' }[c.kind] || 'working on'}: ${c.title.replace(/^(QA|Fix|Plan): /, '')}` : act ? `idle · ${act.label}` : 'idle';
     console.log(`  ${NAMES[id].padEnd(8)} ${what}${s.queues[id] ? `  (+${s.queues[id]} queued)` : ''}`);
   }
+  const ids = Object.keys(s.queues);
+  if (ids.length && ids.every(id => s.current[id] || s.chatting?.[id])) console.log('  the whole pack is busy');
+  else if (!Object.keys(s.current).length && !Object.values(s.queues).some(Boolean)) console.log('  no tickets: the pack is on a break');
   const pend = s.brain.filter(m => m.status === 'pending-qa' || m.status === 'checking').length;
   const needs = s.brain.filter(m => m.status === 'needs-you');
   const w = s.limits?.unifiedWindows;

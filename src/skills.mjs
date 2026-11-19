@@ -21,20 +21,36 @@ export const SOURCES = {
   terrashark: { repo: 'LukasNiessen/terrashark', whole: 'terrashark', license: ['LICENSE'] },
 };
 
-// [source, skill folder]
+// [source, skill folder]. A skill listed twice for one dog is only installed once.
 export const DOG_SKILLS = {
   chou: [['superpowers', 'writing-plans'], ['superpowers', 'brainstorming'], ['superpowers', 'requesting-code-review'], ['superpowers', 'receiving-code-review']],
   harley: [['superpowers', 'test-driven-development'], ['superpowers', 'systematic-debugging'], ['superpowers', 'verification-before-completion'],
     ['caveman', 'surgical-patch'], ['caveman', 'safe-refactor'], ['caveman', 'investigate-first']],
-  asky: [['uipro', 'ui-ux-pro-max'], ['uipro', 'design-system'], ['uipro', 'ui-styling'], ['anthropic', 'frontend-design'], ['anthropic', 'theme-factory']],
-  bacon: [['pgaiguide', 'postgres'], ['pgaiguide', 'design-postgres-tables'], ['pgaiguide', 'postgres-database-migration'], ['pgaiguide', 'schema-exploration'], ['caveman', 'migration']],
-  pitchie: [['anthropic', 'webapp-testing'], ['superpowers', 'test-driven-development'], ['superpowers', 'verification-before-completion'], ['caveman', 'verify-and-stop']],
-  tiger: [['terrashark', 'terrashark'], ['superpowers', 'finishing-a-development-branch'], ['caveman', 'lean-build'], ['caveman', 'verify-and-stop']],
-  biscuit: [['humanizer', 'humanizer']],
-  lucifur: [['superpowers', 'systematic-debugging'], ['caveman', 'investigate-first']],
+  asky: [['uipro', 'ui-ux-pro-max'], ['uipro', 'design-system'], ['uipro', 'ui-styling'], ['uipro', 'design'], ['anthropic', 'frontend-design'],
+    ['anthropic', 'web-artifacts-builder'], ['anthropic', 'canvas-design'], ['anthropic', 'theme-factory']],
+  bacon: [['pgaiguide', 'postgres'], ['pgaiguide', 'design-postgres-tables'], ['pgaiguide', 'postgres-database-migration'], ['pgaiguide', 'schema-exploration'],
+    ['pgaiguide', 'migrate-postgres-tables-to-hypertables'], ['caveman', 'migration'], ['superpowers', 'verification-before-completion']],
+  pitchie: [['anthropic', 'webapp-testing'], ['superpowers', 'test-driven-development'], ['superpowers', 'verification-before-completion'],
+    ['superpowers', 'systematic-debugging'], ['caveman', 'caveman-review'], ['caveman', 'verify-and-stop']],
+  tiger: [['terrashark', 'terrashark'], ['superpowers', 'finishing-a-development-branch'], ['superpowers', 'using-git-worktrees'],
+    ['superpowers', 'verification-before-completion'], ['caveman', 'caveman-commit'], ['caveman', 'lean-build'], ['caveman', 'verify-and-stop']],
+  biscuit: [['humanizer', 'humanizer'], ['anthropic', 'doc-coauthoring'], ['anthropic', 'internal-comms'], ['superpowers', 'writing-skills']],
+  lucifur: [['caveman', 'caveman-explore'], ['caveman', 'investigate-first'], ['superpowers', 'systematic-debugging'], ['superpowers', 'brainstorming'],
+    ['superpowers', 'receiving-code-review']],
 };
 
-export const skillNames = dog => (DOG_SKILLS[dog] || []).map(([, s]) => s);
+// A dog's skill list with repeats removed (same folder name = same skill, since they share one install folder).
+const uniqueSkills = dog => {
+  const seen = new Set();
+  return (DOG_SKILLS[dog] || []).filter(([, skill]) => !seen.has(skill) && seen.add(skill));
+};
+
+// Once a dog's plugin is built, only the skills that actually installed are listed.
+export const skillNames = dog => {
+  const names = uniqueSkills(dog).map(([, s]) => s);
+  const dir = path.join(DOGS_DIR, dog, 'skills');
+  return fs.existsSync(dir) ? names.filter(s => fs.existsSync(path.join(dir, s, 'SKILL.md'))) : names;
+};
 export const pluginDir = dog => path.join(DOGS_DIR, dog);
 export const hasSkills = dog => fs.existsSync(path.join(pluginDir(dog), '.claude-plugin', 'plugin.json'));
 export const skillsInstalled = () => Object.keys(DOG_SKILLS).every(hasSkills);
@@ -58,29 +74,37 @@ async function fetchSource(key, paths) {
   return dir;
 }
 
-/** Download every skill source and build one plugin per dog. `log` gets progress lines. */
+/** Download every skill source and build one plugin per dog. `log` gets progress lines.
+ *  A source or skill that fails is logged and skipped; the rest still install. */
 export async function installSkills(log = () => {}) {
   const need = {};
-  for (const list of Object.values(DOG_SKILLS)) for (const [src, skill] of list) (need[src] ||= new Set()).add(skill);
+  for (const dog of Object.keys(DOG_SKILLS)) for (const [src, skill] of uniqueSkills(dog)) (need[src] ||= new Set()).add(skill);
   const dirs = {};
   for (const [key, skills] of Object.entries(need)) {
     log(`downloading ${SOURCES[key].repo}…`);
-    dirs[key] = await fetchSource(key, [...skills]);
+    try { dirs[key] = await fetchSource(key, [...skills]); }
+    catch (e) { log(`  failed ${SOURCES[key].repo}: ${e.message}`); }
   }
-  for (const [dog, list] of Object.entries(DOG_SKILLS)) {
+  for (const dog of Object.keys(DOG_SKILLS)) {
     const out = pluginDir(dog);
     fs.rmSync(out, { recursive: true, force: true });
     fs.mkdirSync(path.join(out, '.claude-plugin'), { recursive: true });
     fs.writeFileSync(path.join(out, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: `kennel-${dog}`, version: '1.0.0', description: `Skills for ${dog} in Kennel HQ` }, null, 2));
     const credits = [];
-    for (const [key, skill] of list) {
+    for (const [key, skill] of uniqueSkills(dog)) {
       const s = SOURCES[key];
+      if (!dirs[key]) { log(`  skipped ${skill} for ${dog}: ${s.repo} did not download`); continue; }
       const from = s.whole ? dirs[key] : path.join(dirs[key], s.base, skill);
       const to = path.join(out, 'skills', skill);
       if (!fs.existsSync(path.join(from, 'SKILL.md'))) { log(`  skipped ${skill}: not found in ${s.repo}`); continue; }
-      fs.cpSync(from, to, { recursive: true, filter: p => !/[\\/](\.git|\.github|\.claude|\.claude-plugin|node_modules)([\\/]|$)/.test(p.slice(from.length)) });
-      for (const l of s.license) { const lp = path.join(dirs[key], l); if (fs.existsSync(lp)) fs.copyFileSync(lp, path.join(to, `${l}-upstream`)); }
-      credits.push(`- ${skill}: https://github.com/${s.repo}`);
+      try {
+        fs.cpSync(from, to, { recursive: true, filter: p => !/[\\/](\.git|\.github|\.claude|\.claude-plugin|node_modules)([\\/]|$)/.test(p.slice(from.length)) });
+        for (const l of s.license) { const lp = path.join(dirs[key], l); if (fs.existsSync(lp)) fs.copyFileSync(lp, path.join(to, `${l}-upstream`)); }
+        credits.push(`- ${skill}: https://github.com/${s.repo}`);
+      } catch (e) {
+        fs.rmSync(to, { recursive: true, force: true });
+        log(`  failed ${skill} for ${dog}: ${e.message}`);
+      }
     }
     fs.writeFileSync(path.join(out, 'CREDITS.md'), `# Skills for ${dog}\n\nThird-party skills, unchanged, with their original licenses alongside:\n${credits.join('\n')}\n`);
   }

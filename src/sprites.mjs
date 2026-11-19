@@ -76,8 +76,50 @@ const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 const fg = h => `\x1b[38;2;${hex(h).join(';')}m`;
 const bg = h => `\x1b[48;2;${hex(h).join(';')}m`;
 
-/** A small head-only version: half the size, 11 columns × 5 rows. */
-export function mini(id) {
+// Each dog's desk in the terminal: what sits on the left and right of the desk, and the name-card colour.
+// Same props as the web office: developers get a monitor, Bacon a DB rack, Chou a whiteboard.
+const MONITOR = [['#24202f', '#79c7ff', '#ff8fc0', '#24202f'], [null, '#3a3548', '#3a3548', null]];
+const MUG = [[null, null, null, null], [null, '#f1e7d6', '#f1e7d6', null]];
+const DESKS = {
+  chou: { color: '#ffb347', left: MONITOR, right: [['#fbf8f2', '#ffb347', '#79c7ff', '#7ee0b0'], ['#9a92ad', '#5e5a72', '#5e5a72', '#9a92ad']] },
+  harley: { color: '#b69cff', left: MONITOR, right: [[null, '#4fa36b', '#62bb7e', null], [null, '#c46a4a', '#c46a4a', null]] },
+  asky: { color: '#e879f9', left: MUG, right: [['#e879f9', '#79c7ff', '#ffe28a', '#fff7ee'], ['#fff7ee', '#fff7ee', '#fff7ee', '#fff7ee']] },
+  bacon: { color: '#ff7a5c', left: MUG, right: [['#ff9d6b', '#ff7a5c', '#ff7a5c', '#ff9d6b'], ['#2c2638', '#7ee0b0', '#ffb347', '#2c2638']] },
+  pitchie: { color: '#7ee0b0', left: MUG, right: [['#f6f3ec', '#7ee0b0', '#f6f3ec', '#ff6b6b'], ['#ff6b6b', '#ff6b6b', '#ff6b6b', '#ff6b6b']] },
+  tiger: { color: '#79c7ff', left: MUG, right: [['#2c2638', '#7ee0b0', '#ffb347', '#2c2638'], ['#2c2638', '#79c7ff', '#7ee0b0', '#2c2638']] },
+  biscuit: { color: '#2dd4bf', left: MUG, right: [['#2dd4bf', '#ffe28a', '#79c7ff', '#ff8fc0'], ['#2dd4bf', '#ffe28a', '#79c7ff', '#ff8fc0']] },
+  lucifur: { color: '#ef4444', gothic: true, left: [[null, '#ffd27a', null, null], [null, '#f1e7d6', null, null]], right: [['#7a1a2a', '#3a2a5a', '#1f4a3a', null], ['#7a1a2a', '#3a2a5a', '#1f4a3a', null]] },
+};
+
+/** Two terminal rows (four pixel rows) of desk for `id`, 11 columns wide: props, then the desk top and front. */
+function deskRows(id) {
+  const k = DESKS[id] || { color: '#a497b3', left: MUG, right: MUG };
+  const top = k.gothic ? '#3a2a40' : '#c48a58', front = k.gothic ? '#1f1726' : '#7b4d30';
+  const px = Array.from({ length: 4 }, () => Array(11).fill(null));
+  for (let r = 0; r < 2; r++) for (let c = 0; c < 4; c++) { px[r][c] = k.left[r][c]; px[r][7 + c] = k.right[r][c]; }
+  px[2].fill(top); px[3].fill(front);
+  for (let c = 4; c < 7; c++) px[3][c] = c === 4 ? k.color : '#e9dcb8'; // name card on the desk front
+  const lines = [];
+  for (let y = 0; y < 4; y += 2) {
+    let s = '';
+    for (let x = 0; x < 11; x++) {
+      const t = px[y][x], b = px[y + 1][x];
+      if (!t && !b) s += '\x1b[0m ';
+      else if (t && !b) s += `\x1b[0m${fg(t)}▀`;
+      else if (!t && b) s += `\x1b[0m${fg(b)}▄`;
+      else s += `${fg(t)}${bg(b)}▀`;
+    }
+    lines.push(s + '\x1b[0m');
+  }
+  return lines;
+}
+
+/** A small version: half-size head, 11 columns × 5 rows, sitting behind its role desk (2 more rows) unless `desk` is false. */
+export function mini(id, { desk = true } = {}) {
+  return desk ? [...head(id), ...deskRows(id)] : head(id);
+}
+
+function head(id) {
   const g = sitGrid(id);
   const pick = (x, y) => {
     // keep the most important pixel of each 2×2 block: eyes and nose win, then anything not outline
