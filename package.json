@@ -7,7 +7,7 @@
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "https://github.com/PrimeSalad/kennel-hq.git"
+    "url": "git+https://github.com/PrimeSalad/kennel-hq.git"
   },
   "homepage": "https://github.com/PrimeSalad/kennel-hq#readme",
   "keywords": [
