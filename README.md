@@ -55,7 +55,16 @@ The terminal works like Claude Code: the pack in pixel art, a live line for each
 > add a discount() to cart.js, then tests for it, also a README section
 ```
 
-- **Everything goes through Lucifur's front desk first.** A tiny, cheap check (Haiku, no tools, about 1.5k tokens) decides what your message is: a greeting or quick question gets answered right at the desk with **no job started**; a question about the code goes to a dog's chat (much cheaper than a job); real work goes to the dog you named (or the best one) with a short brief naming the files to look at, so they explore less. Start a message with `!` to skip the desk, or run `kennel --no-triage`.
+- **Everything goes through Lucifur's front desk first, and the desk is the one central dispatcher.** Every message lands in one inbox. Messages you send at the same time (or while the desk is still deciding) are read **together in one small call** that also sees the live board: who's working on what, what's queued, and what just finished. For each message it decides:
+  - **reply**: greetings, thanks, "what's the team doing?" are answered right at the desk, with **no job started**
+  - **question**: goes to a dog's chat (much cheaper than a job). Questions sent while that dog is still answering are queued and sent together.
+  - **follow**: builds on a job on the board ("also…", "pati…", "yung kanina", "make it blue instead"). The **same dog continues in its own session**, without re-reading the project. If that job is still running, the follow-up waits and then continues it.
+  - **fix**: says a finished job is wrong. It goes back to that dog's session, and the dog learns a lesson.
+  - **add**: extra detail for a job that hasn't started yet. It's folded into that job, so nothing extra runs.
+  - **same**: already running or queued. Nothing new starts. Exact repeats are caught before any model is called.
+  - **task / plan**: new work, with a short brief naming the files to look at. Related messages in the same batch are merged into one job; unrelated ones stay separate so different dogs work in parallel.
+- **No two dogs in the same file.** The desk lists the files each job will likely touch. A job whose files another dog is editing right now waits for it (`Pitchie waits for Harley to finish with src/login.js`). Every dog also gets a short "teammates right now" note, so it works around the others.
+- The desk uses Haiku when the pack is quiet and Sonnet when there's a board to reason about (`--triage-model` to change). It's still one call with no tools. Start a message with `!` to skip the desk, or run `kennel --no-triage`.
 - **Small tasks** go straight to the right dog. Kennel routes by keyword: database words go to Bacon, tests to Pitchie, deploy/CI to Tiger, UI/design to Asky, docs to Biscuit, "explain / bakit / paano" to Lucifur, plans and reviews to Chou, everything else to Harley.
 - **Big or multi-part requests** go to Chou first. Chou splits them into tickets, and a ticket waits for the ones it depends on.
 - `@dog <task>` sends a task straight to one dog, with no planning.
@@ -153,7 +162,9 @@ kennel qa [--wait] | import-claude | stop
 | Small and medium jobs (and planning, QA, chat) run on a short system prompt of ours instead of Claude Code's full one; only large jobs get the full prompt | Less context re-sent on every turn |
 | Chat defaults to Haiku (`--chat-model` to change) | Questions are cheap |
 | Effort is set per kind of work: low for planning and QA, medium for jobs (override with `--effort`) | Less thinking spent where it doesn't help |
-| **Lucifur's front desk** reads every message first on a ~1.5k-token Haiku call | "hi", "salamat" and quick questions never start a 50–90k-token job |
+| **Lucifur's front desk** reads every message first on one small call, and messages sent together share that call | "hi", "salamat" and quick questions never start a 50–90k-token job |
+| **Follow-ups go back to the same session** automatically, even without `/follow` | "pati yung error message" continues the job instead of a fresh 40k-token re-read |
+| Duplicates and related messages are merged; additions to a queued job are folded in | Sending three prompts at once doesn't mean three jobs |
 | Chou plans big requests into tickets with an order | No two dogs fight over the same file, and no work gets redone |
 | **Smart QA (default):** a change only gets a QA check when it's risky: migrations, auth, payments, CI/config, more than 150 lines or 5 files, or a big change the dog didn't test. Everything else skips it. `--review always` checks everything, `--review off` nothing, and **Run QA on this** in the Tasks tab checks one job on demand | No tokens spent re-checking small, tested changes |
 | When QA does run, it runs once at the end and checks all pending work in one pass | One test run instead of one per change |

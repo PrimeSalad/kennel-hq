@@ -1489,9 +1489,16 @@ function trackEvent(ev,replay){
     case 'triage':{const r=RUNS.get(ev.tid);if(!r)break;
       if(ev.action==='reply'){r.reports=[{dog:'lucifur',text:ev.reply}];step(r,'lucifur','Answered at the desk: '+ev.reply.replace(/\s+/g,' ').slice(0,160),'ok',at);step(r,'lucifur','No job started, no tokens spent on a worker','ok',at);r.status='done';r.ended=at;if(!replay)say(ST.lucifur,'<b>'+esc(ev.reply.slice(0,90))+'</b>',4)}
       else if(ev.action==='question'){r.chatDog=ev.dog;r.dogs.add(ev.dog);step(r,'lucifur','A question: sent to '+nameOf(ev.dog)+'’s chat (cheaper than a full job)','',at);r.status='done';r.ended=at;if(!replay&&chatDog!==ev.dog)toast('Your question went to '+nameOf(ev.dog)+'’s chat.','info')}
+      else if(ev.action==='follow'){step(r,'lucifur','A follow-up: '+nameOf(ev.dog)+(ev.waits?' continues the same session when the current run ends':' continues in the same session, no re-reading'),'ok',at);r.status='done';r.ended=at}
+      else if(ev.action==='add'){step(r,'lucifur','Added to '+nameOf(ev.dog)+'’s queued job (not started yet, so no extra job)','ok',at);r.status='done';r.ended=at}
+      else if(ev.action==='fix'){step(r,'lucifur','A correction: back to '+nameOf(ev.dog)+' to fix it in the same session','warn',at);r.status='done';r.ended=at}
+      else if(ev.action==='same'){step(r,'lucifur',(ev.reply||'Already on it')+' Nothing new started.','ok',at);r.status='done';r.ended=at}
+      else if(ev.action==='with'){step(r,'lucifur','Same work as your previous message: merged into one job','ok',at);r.status='done';r.ended=at}
       else if(ev.fallback)step(r,'lucifur','Passed it on as a job','',at);
       else step(r,'lucifur',(ev.action==='plan'?'A big request: to Chou for planning':'Real work: to '+nameOf(ev.dog||'harley'))+(ev.brief?'. Brief: '+ev.brief:''),'',at);
       break}
+    case 'merged':{const r=runOf(ev.id);if(r)step(r,ev.dog,'Also: '+ev.text,'',at);break}
+    case 'hold':{const r=runOf(ev.id);if(r)step(r,ev.dog,'Waiting for '+nameOf(ev.by)+' to finish with '+ev.files.join(', '),'',at);break}
     case 'undone':{const r=runOf(ev.id);if(r){r.undone=true;step(r,ev.dog,'Undone by you: restored '+ev.restored.length+' file(s), removed '+ev.removed.length,'warn',at)}break}
     case 'committed':{const r=runOf(ev.id);if(r){r.commit=ev.sha;step(r,ev.dog,'Committed '+ev.sha+': '+ev.message.split('\n')[0],'ok',at)}break}
     case 'queued':{const t=ev.task;if(t.parent)parentOf[t.id]=t.parent;

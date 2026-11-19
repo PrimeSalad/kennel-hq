@@ -54,6 +54,7 @@ if (flag('-h') || flag('--help')) {
   --no-review       same as --review off
   --no-plan         never split big requests into tickets
   --no-triage       skip Lucifur's front desk (every message becomes a job)
+  --triage-model <n> model for the front desk (default: haiku when quiet, sonnet when the pack is busy)
   --model <name>    model for the work (default: opus)
   --qa-model <name> model for QA checks (default: sonnet)
   --chat-model <n>  model for chatting with the dogs (default: haiku)
@@ -77,6 +78,9 @@ const PLAN = !flag('--no-plan');
 // questions don't start a full (expensive) job.
 const TRIAGE = !flag('--no-triage');
 const TRIAGE_MODEL = opt('--triage-model', process.env.KENNEL_TRIAGE_MODEL || 'haiku');
+// When several messages arrive together, or the pack is busy, the desk has to reason about the live board
+// (follow-ups, duplicates, file clashes), so it uses a stronger model. Still a single small call with no tools.
+const DESK_MODEL = opt('--triage-model', process.env.KENNEL_DESK_MODEL || 'sonnet');
 const NO_OPEN = flag('--no-open') || HEADLESS;
 const USE_MCP = flag('--mcp');
 let REMOTE = flag('--remote');
@@ -412,7 +416,14 @@ How to avoid mistakes without wasting effort:
 - ${ACCESS === 'full' ? 'After changing code, run the project\'s own checks that cover what you touched (tests, typecheck, lint, build — see package.json, Makefile, pyproject…) and fix failures before you finish. If there are no checks, at least run or import what you touched.' : 'Re-read your changes before you finish.'}
 - Never say something works unless you verified it. If you couldn't verify, say so plainly.
 - If the task is a question ("bakit…?", "how does…?", "is it safe to…?"), the answer is the deliverable: investigate as needed and answer it clearly. Only change code if they asked for a change.
-- If the task is ambiguous, pick the most reasonable reading and state the assumption.
+- If the task is ambiguous, pick the most reasonable reading and state the assumption. The human isn't watching live, so decide instead of asking.
+
+Think like a senior engineer:
+- First pin down the goal and what "done" means. Then find the real cause or the right place (Grep/Glob), not just the first match.
+- Before changing a function, signature or shared style, check who uses it and keep them working.
+- Handle the edge cases the change obviously creates (empty, null, error, loading states). No TODOs or placeholder code.
+- If it's already done, or the request rests on a wrong assumption, say so instead of changing code.
+- When notes from the front desk name files, start there.
 - Keep reports short. No restating the task.
 ${lessonText}
 The team brain (given in the request, full notes under .kennel/memories/) is what the team already did and decided. Stay consistent with it. Write in a clear, professional tone; no role-play. Write your report in the same language the task was written in (English, Tagalog, Taglish or any other); code and technical terms stay as they are.
@@ -497,7 +508,7 @@ LESSON ${i + 1}: <if FAIL, one short rule that dog should follow next time; othe
 const sseClients = new Set();
 const listeners = new Set();
 // The last few hundred job events, so the office can rebuild each prompt's timeline after a reload.
-const TRACKED = new Set(['queued', 'start', 'tool', 'diff', 'done', 'review', 'error', 'plan', 'triage-start', 'triage', 'undone', 'committed']);
+const TRACKED = new Set(['queued', 'start', 'tool', 'diff', 'done', 'review', 'error', 'plan', 'triage-start', 'triage', 'undone', 'committed', 'merged', 'hold']);
 // Kept on disk too, so the Tasks tab survives a restart.
 const EVENTS_FILE = path.join(BRAIN_DIR, 'events.json');
 const recentEvents = readJSON(EVENTS_FILE, []);
@@ -531,57 +542,122 @@ function enqueue(task, front = false) {
   if (task.kind !== 'review') clearTimeout(qaTimer);
   if (front) queues[task.dog].unshift(task); else queues[task.dog].push(task);
   emit({ type: 'queued', dog: task.dog, task: { id: task.id, title: task.title, from: task.from, kind: task.kind, waitsFor: task.deps.length, brief: task.brief,
-    parent: task.planId || task.fixOf || task.triage || task.followOf || null, follow: Boolean(task.followOf), targets: task.kind === 'review' ? task.items.map(i => i.memId) : undefined } });
+    parent: task.followOf || task.fixOf || task.planId || task.triage || null, follow: Boolean(task.followOf), targets: task.kind === 'review' ? task.items.map(i => i.memId) : undefined } });
   pumpAll();
   return task;
 }
 
-function assign(text, dogId, from = 'web', forcePlan = false, files = [], brief = '', triage = null, size = '') {
+function assign(text, dogId, from = 'web', forcePlan = false, files = [], brief = '', triage = null, size = '', claims = []) {
   let full = files.length ? `${text}\n\nFiles to work with: ${files.join(', ')}` : text;
   if (brief) full += `\n\nNotes from the front desk (to save you exploring): ${brief}`;
-  if (DOGS[dogId]) return enqueue({ dog: dogId, title: short(text), text: full, from, brief, triage, size });
+  // The files this job will most likely edit, so it never runs at the same time as a job already in them.
+  claims = [...new Set([...claims, ...files, ...filesIn(`${text} ${brief}`)])].slice(0, 10);
+  const base = { title: short(text.replace(/\s+/g, ' ')), text: full, userText: text, from, brief, triage, size, claims };
+  if (DOGS[dogId]) return enqueue({ dog: dogId, ...base });
   if (PLAN && (forcePlan || needsPlan(text))) {
-    return enqueue({ dog: 'chou', kind: 'plan', title: short(`Plan: ${text}`), text: full, rootTitle: short(text), from, brief, triage });
+    return enqueue({ ...base, dog: 'chou', kind: 'plan', title: short(`Plan: ${base.title}`), rootTitle: base.title, claims: [] });
   }
-  return enqueue({ dog: route(text), title: short(text), text: full, from, brief, triage, size });
+  return enqueue({ dog: route(text), ...base });
 }
 
-/* ------------------------------------------------------------------ the front desk */
-function triagePrompt(text, dogId, files) {
-  const team = 'chou (lead dev: planning, reviews, decisions), harley (app code), asky (UI/UX design and styling), biscuit (documentation), bacon (database), pitchie (tests/QA), tiger (CI, deploy, infra), lucifur (explains code; read-only)';
-  const recent = brain.filter(m => m.kind === 'task' || m.kind === 'fix').slice(0, 4).map(m => `- ${m.title}: ${m.note}`).join('\n') || '(none yet)';
-  const paths = listFiles().filter(p => !DOC_FILE.test(p) || /readme/i.test(p)).slice(0, 150).join('\n');
-  return `Team: ${team}.
-The engineer addressed: ${DOGS[dogId] ? dogId : 'nobody in particular'}${files.length ? `\nFiles they attached: ${files.join(', ')}` : ''}
+// Project paths mentioned in a piece of text (full paths, or a file name that's unique in the project).
+let fileCache = { t: 0, list: [], byName: new Map() };
+function projectFiles() {
+  if (Date.now() - fileCache.t > 15_000) {
+    const list = listFiles(), byName = new Map();
+    for (const f of list) { const b = f.split('/').pop(); byName.set(b, byName.has(b) ? null : f); }
+    fileCache = { t: Date.now(), list, set: new Set(list), byName };
+  }
+  return fileCache;
+}
+function filesIn(text) {
+  const { set, byName } = projectFiles();
+  const found = new Set();
+  for (const tok of String(text).match(/[\w@.\-/\\]+\.[a-z0-9]{1,6}\b/gi) || []) {
+    const t = tok.replace(/\\/g, '/').replace(/^\.\//, '');
+    if (set.has(t)) found.add(t);
+    else if (!t.includes('/') && byName.get(t)) found.add(byName.get(t));
+  }
+  return [...found];
+}
 
-Recent team work:
-${recent}
+/* ------------------------------------------------------------------ the front desk (central dispatcher) */
+// Every message from you lands in one inbox. Messages that arrive together (or while the desk is still
+// deciding) are read in ONE call that also sees the live board: who's working on what, what's queued, and
+// what just finished. So nothing gets done twice, a follow-up continues the session it belongs to instead
+// of starting from zero, and related messages become one job.
+const DESK_WINDOW_MS = 900;   // wait this long for more messages before deciding
+const DESK_MAX_BATCH = 8;
+const RECENT_MS = 3 * 3600_000;
+const inbox = [];
+let deskBusy = false, deskTimer = null;
+
+const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m}m ago` : `${Math.round(m / 60)}h ago`; };
+function liveBoard() {
+  const now = Date.now();
+  const running = IDS.filter(d => current[d] && current[d].kind !== 'review').map(d => {
+    const cur = current[d], files = [...busyFiles(cur)].slice(0, 5);
+    return `- [${cur.id}] ${DOGS[d].name} is ${cur.kind === 'plan' ? 'planning' : 'working on'}: "${cur.rootTitle || cur.title}" (${Math.round((now - cur.started) / 1000)}s in${files.length ? `; files: ${files.join(', ')}` : ''})`;
+  });
+  const queued = IDS.flatMap(d => queues[d].filter(t => t.kind !== 'review').map(t =>
+    `- [${t.id}] ${DOGS[d].name}${t.kind === 'plan' ? ' will plan' : ''}: "${t.rootTitle || t.title}" (not started${t.deps.length ? ', waits for another job' : ''})`));
+  const finished = brain.filter(m => isWork(m) && m.status !== 'undone' && now - m.t < RECENT_MS).slice(0, 6).map(m =>
+    `- [${m.id}] ${DOGS[m.dog]?.name || m.dog}, ${ago(m.t)}${m.status ? `, ${m.status}` : ''}: "${m.rootTitle || m.title}". ${m.note}${m.files?.length ? ` (files: ${m.files.slice(0, 5).join(', ')})` : ''}`);
+  return { running, queued, finished, busy: running.length + queued.length > 0 };
+}
+
+function triagePrompt(batch, board) {
+  const team = 'chou (lead dev: planning, reviews, decisions), harley (app code), asky (UI/UX design and styling), biscuit (documentation), bacon (database), pitchie (tests/QA), tiger (CI, deploy, infra), lucifur (explains code; read-only)';
+  const paths = projectFiles().list.filter(p => !DOC_FILE.test(p) || /readme/i.test(p)).slice(0, 150).join('\n');
+  const msgs = batch.map((m, i) => `[${i + 1}]${m.dogId ? ` (addressed to ${m.dogId})` : ''}${m.files.length ? ` (files attached: ${m.files.join(', ')})` : ''}\n"""${m.text}"""`).join('\n\n');
+  return `Team: ${team}.
+
+BOARD (job ids in brackets)
+Working now:
+${board.running.join('\n') || '(nobody)'}
+Queued, not started:
+${board.queued.join('\n') || '(nothing)'}
+Finished recently:
+${board.finished.join('\n') || '(nothing yet)'}
 
 Project files:
 ${paths || '(none)'}
 
-Message:
-"""${text}"""
+${batch.length > 1 ? `${batch.length} MESSAGES arrived at about the same time` : 'MESSAGE'}:
+${msgs}
 
-Decide what to do with the message:
-- "reply": greetings, thanks, small talk, or anything you can fully answer without reading the code. Put the answer in "reply": short, professional, no role-play, in the same language as the message.
-- "question": a question about this project's code that needs reading files, but no changes. Set "dog" to whoever should answer (lucifur for explanations, otherwise the addressed dog).
-- "task": a request to change, build, fix, test, document or deploy something. Set "dog": keep the addressed dog unless they clearly can't do it. Set "brief": 1 to 3 sentences that make the job cheaper, naming the likely files (only from the list above) and what "done" means. Don't restate the message.
+Decide what happens to each message. Pick ONE action:
+- "reply": greetings, thanks, small talk, or anything you can fully answer without reading the code (including "what's the team doing?", answered from the board). Put the answer in "reply": short, professional, same language as the message.
+- "question": a question about this project's code that needs reading files but no changes. Set "dog" (lucifur for explanations, otherwise the addressed dog or the expert).
+- "follow": the message continues, extends or refers back to a job on the board: "also…", "pati…", "tapos…", "yung kanina", "it/that", "now add tests for that", "make it blue instead". Set "job". The same dog continues in its own session and does not re-read the project, which is far cheaper than a new task. Use it whenever the message clearly builds on a board job (running or finished). If the follow-up needs a different specialist (e.g. tests for Harley's change → Pitchie), use "task" instead and mention the job in "brief".
+- "fix": the message says a FINISHED job is wrong or broken ("mali", "di gumana", "still broken"). Set "job". The dog fixes it in its session and learns a lesson.
+- "add": extra detail or a change of mind for a job that is QUEUED and not started. Set "job"; it is folded into that job.
+- "same": asks for something that is already running or queued. Set "job" and a one-line "reply" saying who is on it. Nothing new starts.
+- "task": new work: change, build, fix, test, document or deploy something.
 - "plan": a big request with several separate parts that should be split into tickets.
 
-For a task, also set "size": "small" (one or two files, a few lines: typos, small fixes, a comment, a rename), "medium", or "large".
+Also:
+- "with": if a message is part of the same work as an EARLIER message in this list, set "with" to that message's number and it is merged into it (e.g. [1] "add dark mode" + [2] "put the toggle in the navbar" → [2] with 1). Unrelated requests stay separate so different dogs work in parallel.
+- "dog": for task, keep the addressed dog unless they clearly can't do it; otherwise the best expert.
+- "files": for task, follow and fix: the project files the work will most likely edit, only from the list above, at most 6. The team uses this to keep two dogs out of the same file, so be accurate.
+- "brief": for task, follow and plan: 1 to 3 sentences that make the job cheaper (where to look, what "done" means, related board jobs). Don't restate the message.
+- "size": for task: "small" (one or two files, a few lines), "medium", or "large".
 
-Return only this JSON: {"action":"reply|question|task|plan","dog":"<id or empty>","reply":"<for reply only>","brief":"<for task or plan only>","size":"<for task only>"}`;
+Return only JSON, one entry per message:
+{"decisions":[{"n":1,"action":"reply|question|follow|fix|add|same|task|plan","job":"","with":0,"dog":"","reply":"","brief":"","size":"","files":[]}]}`;
 }
 
-function triageCall(text, dogId, files) {
+function triageCall(batch) {
+  const board = liveBoard();
+  // A lone message with an idle pack is easy: the cheap model. Anything that needs judgment about the board: the stronger one.
+  const model = batch.length > 1 || board.busy || board.finished.length ? DESK_MODEL : TRIAGE_MODEL;
   return new Promise(resolve => {
     const child = spawn(CLAUDE, ['-p', '--output-format', 'json', '--tools', '', '--no-session-persistence', '--strict-mcp-config',
-      '--disable-slash-commands', '--effort', 'low', '--model', TRIAGE_MODEL,
-      '--system-prompt', 'You are the front desk of a small software team. You decide quickly and cheaply what to do with each message from the lead engineer. Output one JSON object and nothing else.'],
+      '--disable-slash-commands', '--effort', 'low', '--model', model,
+      '--system-prompt', 'You are the dispatcher at the front desk of a small software team. You see everything the team is doing and decide quickly what happens to each message from the lead engineer, so no work is duplicated, follow-ups continue the job they belong to, and tokens are not wasted. Output one JSON object and nothing else.'],
     { cwd: os.tmpdir(), windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
     let outText = '';
-    const timer = setTimeout(() => { child.kill(); resolve(null); }, 45000);
+    const timer = setTimeout(() => { child.kill(); resolve(null); }, 60000);
     child.stdout.on('data', b => { outText += b; });
     child.on('error', () => { clearTimeout(timer); resolve(null); });
     child.on('close', () => {
@@ -593,44 +669,145 @@ function triageCall(text, dogId, files) {
         const j = m ? JSON.parse(m[0]) : null;
         const u = r.usage || {};
         const spent = (u.input_tokens || 0) + (u.output_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
-        addUsage('lucifur', spent); if (j) j.tokens = spent;
-        resolve(j && ['reply', 'question', 'task', 'plan'].includes(j.action) ? j : null);
+        addUsage('lucifur', spent);
+        let list = Array.isArray(j?.decisions) ? j.decisions : j?.action ? [{ n: 1, ...j }] : null;
+        if (!list) return resolve(null);
+        list = list.filter(x => x && ['reply', 'question', 'follow', 'fix', 'add', 'same', 'task', 'plan'].includes(x.action));
+        resolve({ list, tokens: spent, model });
       } catch { resolve(null); }
     });
-    child.stdin.end(triagePrompt(text, dogId, files));
+    child.stdin.end(triagePrompt(batch, board));
   });
 }
 
 // Every message from you goes through here. A leading "!" skips the front desk.
-async function frontDesk(text, dogId, from = 'web', forcePlan = false, files = []) {
-  if (text.startsWith('!')) return assign(text.slice(1).trim(), dogId, from, forcePlan, files);
-  if (!TRIAGE || !CLAUDE_VERSION || forcePlan) return assign(text, dogId, from, forcePlan, files);
-  const tid = rid();
-  emit({ type: 'triage-start', tid, text: short(text), dog: DOGS[dogId] ? dogId : null, from });
-  const r = await triageCall(text, dogId, files);
-  if (!r) { emit({ type: 'triage', tid, action: 'task', dog: dogId || null, fallback: true }); return assign(text, dogId, from, false, files, '', tid); }
-  const dog = DOGS[dogId] ? dogId : DOGS[r.dog] ? r.dog : null;
-  if (r.action === 'reply' && r.reply) {
+function frontDesk(text, dogId, from = 'web', forcePlan = false, files = []) {
+  if (text.startsWith('!')) return Promise.resolve(assign(text.slice(1).trim(), dogId, from, forcePlan, files));
+  if (!TRIAGE || !CLAUDE_VERSION || forcePlan) return Promise.resolve(assign(text, dogId, from, forcePlan, files));
+  return new Promise(resolve => {
+    const tid = rid();
+    emit({ type: 'triage-start', tid, text: short(text), dog: DOGS[dogId] ? dogId : null, from });
+    inbox.push({ tid, text, dogId: DOGS[dogId] ? dogId : null, from, files, resolve });
+    scheduleDesk();
+  });
+}
+function scheduleDesk() {
+  if (deskBusy || deskTimer || !inbox.length) return;
+  deskTimer = setTimeout(runDesk, DESK_WINDOW_MS);
+}
+async function runDesk() {
+  deskTimer = null;
+  if (deskBusy || !inbox.length) return;
+  deskBusy = true;
+  const batch = inbox.splice(0, DESK_MAX_BATCH);
+  try {
+    // An exact repeat of something already running or queued never reaches the model.
+    const fresh = [];
+    for (const m of batch) {
+      const dup = sameAsActive(m.text);
+      if (dup) settleDesk(m, { action: 'same', job: dup.id, dog: dup.dog, reply: `${DOGS[dup.dog].name} is already on that.` });
+      else fresh.push(m);
+    }
+    if (fresh.length) {
+      const r = await triageCall(fresh);
+      if (!r) for (const m of fresh) { emit({ type: 'triage', tid: m.tid, action: 'task', dog: m.dogId, fallback: true }); m.resolve(assign(m.text, m.dogId, m.from, false, m.files, '', m.tid)); }
+      else dispatch(fresh, r);
+    }
+  } catch (err) {
+    for (const m of batch) if (!m.done) { emit({ type: 'triage', tid: m.tid, action: 'task', dog: m.dogId, fallback: true }); m.resolve(assign(m.text, m.dogId, m.from, false, m.files, '', m.tid)); }
+    emit({ type: 'notice', text: `Front desk error: ${err.message}` });
+  } finally {
+    deskBusy = false;
+    scheduleDesk();
+  }
+}
+
+const norm = s => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+function sameAsActive(text) {
+  const key = norm(text);
+  if (key.length < 12) return null;
+  for (const d of IDS) {
+    for (const t of [current[d], ...queues[d]]) if (t && t.userText && norm(t.userText) === key) return t;
+  }
+  return null;
+}
+
+function dispatch(batch, r) {
+  const byN = new Map(r.list.map(d => [Number(d.n), d]));
+  const items = batch.map((m, i) => Object.assign(m, { d: byN.get(i + 1) || null }));
+  items[0].tokens = r.tokens; items[0].model = r.model;
+  // Messages that belong to the same work as an earlier one in this batch are merged into it (last first,
+  // so a chain 3 → 2 → 1 ends up whole in 1).
+  for (let i = items.length - 1; i > 0; i--) {
+    const w = Number(items[i].d?.with);
+    if (!(w >= 1 && w <= i)) continue;
+    const host = items[w - 1];
+    host.text += `\n\nAlso: ${items[i].text}`;
+    host.files = [...new Set([...host.files, ...items[i].files])];
+    if (host.d && items[i].d?.files) host.d.files = [...new Set([...(host.d.files || []), ...items[i].d.files])];
+    items[i].into = host;
+  }
+  for (const it of items) {
+    if (it.into) { settleDesk(it, { action: 'with', into: it.into.tid }); continue; }
+    try { decide(it); } catch (err) { if (!it.done) { emit({ type: 'triage', tid: it.tid, action: 'task', dog: it.dogId, fallback: true }); it.resolve(assign(it.text, it.dogId, it.from, false, it.files, '', it.tid)); } }
+  }
+}
+
+function settleDesk(it, ev, result = null) {
+  it.done = true;
+  emit({ type: 'triage', tid: it.tid, tokens: it.tokens, model: it.model, ...ev });
+  it.resolve(result || { kind: ev.action, dog: ev.dog || null, id: ev.job || null });
+}
+
+function decide(it) {
+  const { d, text, from, files, tid } = it;
+  if (!d) { emit({ type: 'triage', tid, action: 'task', dog: it.dogId, fallback: true }); it.done = true; return it.resolve(assign(text, it.dogId, from, false, files, '', tid)); }
+  const dog = it.dogId || (DOGS[d.dog] ? d.dog : null);
+  const { set } = projectFiles();
+  const claims = [...new Set([...(Array.isArray(d.files) ? d.files.map(String).filter(f => set.has(f)) : []), ...files])].slice(0, 8);
+  const brief = String(d.brief || '').trim();
+  const job = String(d.job || '').trim();
+
+  if (d.action === 'reply' && d.reply) {
     // Answered at the desk: nobody starts a job. It's kept in Lucifur's chat so you can see it later.
     const thread = (chats.lucifur ||= { session: null, messages: [] });
-    const you = { role: 'you', text, files, t: Date.now() }, reply = { role: 'dog', text: String(r.reply).trim(), t: Date.now(), desk: true };
+    const you = { role: 'you', text, files, t: Date.now() }, reply = { role: 'dog', text: String(d.reply).trim(), t: Date.now(), desk: true };
     thread.messages.push(you, reply); saveChats();
-    emit({ type: 'triage', tid, action: 'reply', dog: 'lucifur', reply: reply.text, tokens: r.tokens });
+    settleDesk(it, { action: 'reply', dog: 'lucifur', reply: reply.text }, { kind: 'reply', dog: 'lucifur', reply: reply.text });
     emit({ type: 'chat', dog: 'lucifur', message: you });
     emit({ type: 'chat-done', dog: 'lucifur', message: reply, totals: usage, quiet: true });
-    return { kind: 'reply', dog: 'lucifur', reply: reply.text };
+    return;
   }
-  if (r.action === 'question') {
-    const who = DOGS[r.dog] ? r.dog : dog || 'lucifur';
-    emit({ type: 'triage', tid, action: 'question', dog: who });
-    const c = chat(who, text, files);
-    if (c.error) return assign(text, who, from, false, files, '', tid);
-    return { kind: 'chat', dog: who };
+  if (d.action === 'question') {
+    const who = DOGS[d.dog] ? d.dog : dog || 'lucifur';
+    settleDesk(it, { action: 'question', dog: who }, { kind: 'chat', dog: who });
+    chat(who, text, files);
+    return;
   }
-  const size = ['small', 'medium', 'large'].includes(r.size) ? r.size : '';
-  emit({ type: 'triage', tid, action: r.action, dog, brief: r.brief || '', size });
-  const task = assign(text, dog, from, r.action === 'plan', files, String(r.brief || '').trim(), tid, size);
-  return { id: task.id, dog: task.dog, kind: task.kind };
+  if (d.action === 'same' && (runningJob(job) || queuedJob(job))) {
+    const t = runningJob(job) || queuedJob(job);
+    return settleDesk(it, { action: 'same', job, dog: t.dog, reply: String(d.reply || `${DOGS[t.dog].name} is already on that.`).trim() });
+  }
+  if (d.action === 'add' || d.action === 'follow' || d.action === 'fix') {
+    const finished = findMem(job);
+    if (d.action === 'fix' && finished && isWork(finished) && !runningJob(job) && !queuedJob(job) && !activeFollowOf(job)) {
+      const t = feedback(job, text, from);
+      if (t) return settleDesk(it, { action: 'fix', job, dog: t.dog }, { id: t.id, dog: t.dog, kind: 'fix' });
+    }
+    const wasQueued = queuedJob(activeFollowOf(job) || job);
+    const t = followUp(job, text, from, { claims, brief, triage: tid });
+    if (t) {
+      const action = wasQueued ? 'add' : 'follow';
+      return settleDesk(it, { action, job: t.followOf || t.id, dog: t.dog, waits: Boolean(t.deps?.length), brief }, { id: t.id, dog: t.dog, kind: action });
+    }
+    // The job it pointed at is gone or can't be continued: treat it as new work.
+  }
+  const plan = d.action === 'plan';
+  const size = ['small', 'medium', 'large'].includes(d.size) ? d.size : '';
+  emit({ type: 'triage', tid, action: plan ? 'plan' : 'task', dog, brief, size, tokens: it.tokens, model: it.model });
+  it.done = true;
+  const task = assign(text, dog, from, plan, files, brief, tid, size, claims);
+  it.resolve({ id: task.id, dog: task.dog, kind: task.kind });
 }
 
 function pumpAll() { for (const id of IDS) pump(id); }
@@ -646,14 +823,61 @@ function pump(dog) {
       continue;
     }
     if (!task.deps.every(d => doneIds.has(d))) continue;
+    // Don't let two dogs edit the same files at once: wait for whoever is in them right now.
+    const clash = fileClash(task);
+    if (clash) {
+      if (task.heldBy !== clash.dog) { task.heldBy = clash.dog; emit({ type: 'hold', dog, id: task.id, by: clash.dog, files: clash.files }); }
+      continue;
+    }
     q.splice(i, 1);
     start(task);
     return;
   }
 }
 
+// The files a running job is in (edited so far, plus what the desk expects it to touch).
+const busyFiles = cur => new Set([...(cur.files || []), ...(cur.claims || [])]);
+function fileClash(task) {
+  if (!task.claims?.length || (task.kind !== 'task' && task.kind !== 'fix')) return null;
+  for (const d of IDS) {
+    const cur = current[d];
+    if (!cur || d === task.dog || (cur.kind !== 'task' && cur.kind !== 'fix')) continue;
+    const busy = busyFiles(cur);
+    const files = task.claims.filter(f => busy.has(f));
+    if (files.length) return { dog: d, files };
+  }
+  return null;
+}
+
+// What the rest of the pack is doing right now, so a dog works around its teammates instead of into them.
+function teamNow(dog) {
+  const rows = IDS.filter(d => d !== dog && current[d] && current[d].kind !== 'review').map(d => {
+    const cur = current[d], files = [...busyFiles(cur)].slice(0, 6);
+    return `- ${DOGS[d].name}: ${cur.rootTitle || cur.title}${files.length ? ` (files: ${files.join(', ')})` : ''}`;
+  });
+  return rows.length ? `<teammates_now>\nThese teammates are working in this folder right now. Don't edit their files; if your task truly needs one, do your part around it and say so in your report.\n${rows.join('\n')}\n</teammates_now>\n\n` : '';
+}
+
+// A follow-up continues the newest session in its job's chain (job → its fixes and follow-ups),
+// so the dog remembers everything it already did instead of re-reading the project.
+function latestInChain(id) {
+  let best = findMem(id);
+  for (let guard = 0; best && guard < 20; guard++) {
+    const next = brain.find(m => (m.followOf === best.id || m.fixOf === best.id) && m.session && m.status !== 'undone');
+    if (!next) break;
+    best = next;
+  }
+  return best;
+}
+
 function start(task) {
   const { dog } = task;
+  // Follow-ups are resolved now, not when they were queued: the job they build on may have just finished.
+  if (task.followOf && task.followText != null) {
+    const m = latestInChain(task.followOf);
+    task.resume = m?.session || null;
+    task.text = followPrompt(m, task.followText, task.rootTitle, task.brief);
+  }
   if ((task.kind === 'task' || task.kind === 'fix') && !DOGS[dog].readOnly && ACCESS !== 'read-only') task.checkpoint = checkpoint();
   current[dog] = { ...task, chars: 0, out: '', files: new Set(), ranCmd: false, proc: null, started: Date.now(), action: 'Thinking…' };
   emit({ type: 'start', dog, task: { id: task.id, title: task.title, kind: task.kind } });
@@ -779,9 +1003,9 @@ function work(task) {
 
   let prompt;
   if (task.kind === 'review') prompt = `${relevantLessons(dog, task.items.map(i => i.rootText).join(' '))}${reviewPrompt(task)}`;
-  else if (task.kind === 'plan') prompt = `<team_brain>\n${brainContext(task.text)}\n</team_brain>\n\n${planPrompt(task)}`;
-  else if (task.resume) prompt = task.text;
-  else prompt = `${relevantLessons(dog, task.rootText)}<team_brain>\n${brainContext(task.rootText)}\n</team_brain>\n\nTask from the human:\n${task.text}`;
+  else if (task.kind === 'plan') prompt = `<team_brain>\n${brainContext(task.text)}\n</team_brain>\n\n${teamNow(dog)}${planPrompt(task)}`;
+  else if (task.resume) prompt = `${teamNow(dog)}${task.text}`;
+  else prompt = `${relevantLessons(dog, task.rootText)}<team_brain>\n${brainContext(task.rootText)}\n</team_brain>\n\n${teamNow(dog)}Task from the human:\n${task.text}`;
 
   return new Promise((resolve, reject) => {
     const child = spawn(CLAUDE, args, { cwd: WORKDIR, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -938,7 +1162,7 @@ function finishPlan(task, text) {
   emit({ type: 'plan', dog: 'chou', request: task.rootTitle, plan: task.id, tickets: tickets.map(t => ({ id: t.id, n: t.n, dog: t.dog, title: t.title, after: t.deps.map(id => tickets.find(x => x.id === id)?.n) })) });
   for (const t of tickets) {
     enqueue({
-      id: t.id, dog: t.dog, title: t.title, deps: t.deps, from: task.from, planId: task.id,
+      id: t.id, dog: t.dog, title: t.title, deps: t.deps, from: task.from, planId: task.id, claims: filesIn(t.detail),
       text: `${t.detail}\n\n(This is ticket ${t.n} of ${tickets.length} in Chou's plan for the human's request: “${task.text}”. Other tickets: ${tickets.filter(x => x !== t).map(x => `#${x.n} ${DOGS[x.dog].name}: ${x.title}`).join('; ') || 'none'}. Do only your ticket.)`,
       rootText: `${t.title}: ${t.detail}`, rootTitle: t.title,
     });
@@ -990,7 +1214,7 @@ function feedback(memId, text, from = 'web') {
   setStatus(mem, 'fixing');
   const root = mem.rootTitle || mem.title;
   return enqueue({
-    dog: mem.dog, kind: 'fix', from, fixOf: mem.id, resume: mem.session, round: 1, rootTitle: root, rootText: mem.rootText || root,
+    dog: mem.dog, kind: 'fix', from, fixOf: mem.id, resume: latestInChain(mem.id)?.session || mem.session, round: 1, rootTitle: root, rootText: mem.rootText || root, claims: mem.files || [],
     title: short(`Fix: ${root}`),
     text: `The human says your work on “${root}” is wrong:\n${text}\n\n${mem.session ? '' : `Your earlier report is in .kennel/memories/${mem.id}.md. `}Fix it, verify it, and reply in the TYPE / SUMMARY / LESSON / --- format.`,
   }, true);
@@ -1050,6 +1274,14 @@ const chats = readJSON(CHATS_FILE, {}); // dog -> { session, messages: [{ role: 
 if (chats.coco && !chats.asky) { chats.asky = chats.coco; delete chats.coco; }
 const saveChats = () => fs.writeFileSync(CHATS_FILE, JSON.stringify(chats, null, 2));
 const chatting = {}; // dog -> { started, action, out, proc }
+const chatWaiting = {}; // dog -> [{ text, files }]: questions that arrived while the dog was still answering
+// Questions that pile up while a dog is answering go out together as one message when it's free.
+function nextChat(dog) {
+  const q = chatWaiting[dog];
+  if (!q?.length || chatting[dog]) return;
+  const batch = q.splice(0);
+  chat(dog, batch.map(x => x.text).join('\n\n'), [...new Set(batch.flatMap(x => x.files))]);
+}
 
 function chatPersona(id) {
   const d = DOGS[id];
@@ -1071,7 +1303,11 @@ ${ls.length ? `\nTeam conventions to respect:\n${ls.map(l => `- ${l.text}`).join
 
 function chat(dog, text, files = []) {
   if (!DOGS[dog]) return { error: 'Unknown dog' };
-  if (chatting[dog]) return { error: `${DOGS[dog].name} is still answering.` };
+  if (chatting[dog]) {
+    (chatWaiting[dog] ||= []).push({ text, files });
+    emit({ type: 'notice', level: 'info', text: `${DOGS[dog].name} is still answering; your next question goes right after.` });
+    return { ok: true, queued: true };
+  }
   const thread = (chats[dog] ||= { session: null, messages: [] });
   const msg = { role: 'you', text, files, t: Date.now() };
   thread.messages.push(msg); saveChats();
@@ -1091,7 +1327,7 @@ function chat(dog, text, files = []) {
   const child = spawn(CLAUDE, args, { cwd: WORKDIR, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
   st.proc = child;
   let result = null, last = 0, stderr = '';
-  const fail = message => { delete chatting[dog]; emit({ type: 'chat-error', dog, message }); };
+  const fail = message => { delete chatting[dog]; emit({ type: 'chat-error', dog, message }); nextChat(dog); };
   child.on('error', err => fail(`Couldn't start Claude Code (${err.message}).`));
   child.stderr.on('data', b => { stderr = (stderr + b).slice(-1500); });
   child.stdin.end(prompt);
@@ -1130,6 +1366,7 @@ function chat(dog, text, files = []) {
     addUsage(dog, (u.input_tokens || 0) + (u.output_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0));
     saveUsage();
     emit({ type: 'chat-done', dog, message: reply, totals: usage });
+    nextChat(dog);
   });
   return { ok: true };
 }
@@ -1190,17 +1427,54 @@ function undoJob(id) {
   return { restored, removed };
 }
 
-// Ask the same dog for more on a finished job; it continues in the same session.
-function followUp(id, text, from = 'web') {
-  const m = findMem(id);
-  if (!m || !DOGS[m.dog]) return null;
-  const root = m.rootTitle || m.title;
+const isWork = t => t && (t.kind === 'task' || t.kind === 'fix');
+const runningJob = id => IDS.map(d => current[d]).find(cur => cur?.id === id) || null;
+const queuedJob = id => { for (const d of IDS) { const t = queues[d].find(x => x.id === id); if (t) return t; } return null; };
+// A follow-up that's already queued or running on this job's chain (so a second follow-up joins it).
+function activeFollowOf(id) {
+  const all = [...IDS.map(d => current[d]).filter(Boolean), ...IDS.flatMap(d => queues[d])];
+  for (let cur = id, guard = 0; guard < 10; guard++) {
+    const next = all.find(t => isWork(t) && (t.followOf === cur || t.fixOf === cur));
+    if (!next) return cur === id ? null : cur;
+    cur = next.id;
+  }
+  return null;
+}
+
+function followPrompt(m, text, root, brief) {
+  const notes = brief ? `\n\nNotes from the front desk: ${brief}` : '';
+  return m?.session
+    ? `Follow-up from the human on this same job:\n${text}${notes}\n\nThe files may have changed since your last turn (teammates work here too), so re-read anything before you edit it. Reply in the TYPE / SUMMARY / LESSON / --- format when you're done.`
+    : `Follow-up on “${root}”${m ? ` (your earlier report is in .kennel/memories/${m.id}.md)` : ''}:\n${text}${notes}`;
+}
+
+// Fold more instructions into a job that hasn't started yet: no extra job, no extra tokens.
+function addToQueued(task, text, files = []) {
+  if (task.followText != null) task.followText += `\n\nAlso: ${text}`;
+  else task.text += `\n\nMore from the human (added before you started):\n${text}${files.length ? `\nFiles: ${files.join(', ')}` : ''}`;
+  task.rootText += `\n${text}`;
+  task.claims = [...new Set([...(task.claims || []), ...files])];
+  emit({ type: 'merged', id: task.id, dog: task.dog, text: short(text) });
+  return task;
+}
+
+// Ask the same dog for more on a job. Finished: it continues in the same session right away. Running: it
+// waits for that run and then continues its session. Not started yet: the request is folded into it.
+function followUp(id, text, from = 'web', extra = {}) {
+  const chained = activeFollowOf(id);
+  if (chained) id = chained;
+  const queued = queuedJob(id);
+  if (queued) return isWork(queued) || queued.kind === 'plan' ? addToQueued(queued, text, extra.claims) : null;
+  const run = runningJob(id);
+  if (run && !isWork(run)) return null;
+  const src = run || findMem(id);
+  if (!src || !DOGS[src.dog] || (!run && src.kind !== 'task' && src.kind !== 'fix')) return null;
+  const root = src.rootTitle || src.title;
   return enqueue({
-    dog: m.dog, kind: 'task', from, followOf: m.id, resume: m.session, size: 'medium',
-    rootText: `${m.rootText || root}\nFollow-up: ${text}`, rootTitle: root, title: short(`Follow-up: ${text}`),
-    text: m.session ? `Follow-up from the human on this same job:\n${text}\n\nReply in the TYPE / SUMMARY / LESSON / --- format when you're done.`
-      : `Follow-up on “${root}” (your earlier report is in .kennel/memories/${m.id}.md):\n${text}`,
-  }, true);
+    dog: src.dog, kind: 'task', from, followOf: id, followText: text, deps: run ? [id] : [], size: 'medium',
+    rootText: `${src.rootText || root}\nFollow-up: ${text}`, rootTitle: root, title: short(`Follow-up: ${text}`), text: text,
+    claims: [...new Set([...(extra.claims || []), ...(src.files ? [...src.files] : [])])].slice(0, 10), brief: extra.brief || '', triage: extra.triage || null,
+  }, !run);
 }
 
 // Commit exactly the files a job changed, with a message in the team's own style.
@@ -1587,8 +1861,15 @@ listeners.add(ev => {
   if (ev.type === 'triage') {
     if (ev.action === 'reply') out(`  ${dim('⎿')}  ${ev.reply.split('\n').join('\n     ')}\n     ${dim('answered at the desk, no job started')}`);
     else if (ev.action === 'question') out(`  ${dim('⎿')}  ${dim('a question: sent to')} ${nm(ev.dog)}${dim('\'s chat (cheaper than a full job)')}`);
+    else if (ev.action === 'follow') out(`  ${dim('⎿')}  ${dim('a follow-up on job')} ${ev.job}${dim(': ')}${nm(ev.dog)} ${dim(ev.waits ? 'continues the same session as soon as the current run ends' : 'continues in the same session (no re-reading)')}`);
+    else if (ev.action === 'add') out(`  ${dim('⎿')}  ${dim('added to')} ${nm(ev.dog)}${dim('\'s queued job (it hasn\'t started yet, so no extra job)')}`);
+    else if (ev.action === 'fix') out(`  ${dim('⎿')}  ${dim('a correction: back to')} ${nm(ev.dog)} ${dim('to fix it in the same session, and they\'ll learn from it')}`);
+    else if (ev.action === 'same') out(`  ${dim('⎿')}  ${ev.reply || 'already on it'} ${dim(`(job ${ev.job}, nothing new started)`)}`);
+    else if (ev.action === 'with') out(`  ${dim('⎿')}  ${dim('same work as your previous message: merged into one job')}`);
     else if (!ev.fallback) out(`  ${dim('⎿')}  ${dim(ev.action === 'plan' ? 'a big one: to Chou for planning' : 'real work: to')} ${ev.action === 'plan' ? '' : nm(ev.dog || route(''))}${ev.brief ? `\n     ${dim('brief:')} ${ev.brief}` : ''}`);
   }
+  if (ev.type === 'merged') out(`  ${dim('⎿')}  ${nm(ev.dog)} ${dim('will also:')} ${ev.text}`);
+  if (ev.type === 'hold') out(`  ${dim('⎿')}  ${nm(ev.dog)} ${dim(`waits for ${DOGS[ev.by].name} to finish with ${ev.files.join(', ')}`)}`);
   if (ev.type === 'chat' && lastChatFrom !== 'terminal') out(`\n${c(GRAY, 'you → ')}${nm(ev.dog)}  ${ev.message.text}${dim('  · from the office')}`);
   if (ev.type === 'chat') lastChatFrom = '';
   if (ev.type === 'chat-done' && !ev.quiet) {
