@@ -39,7 +39,7 @@ The cats work on media files in your project with FFmpeg (and Remotion when the 
 ## Install
 
 ```bash
-npm i -g kennel-hq
+npm i -g https://github.com/PrimeSalad/kennel-hq/tarball/main
 ```
 
 Then go to any project and type `kennel`. That's it. (Needs [Node.js](https://nodejs.org) 22+ and [Claude Code](https://claude.com/claude-code); run `claude` once to log in.)
